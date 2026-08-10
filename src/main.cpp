@@ -112,6 +112,7 @@ namespace
     {
         std::uniform_real_distribution<float> coordinate(-0.15f, 1.15f);
         std::uniform_int_distribution<int> color_channel(0, 255);
+        std::uniform_int_distribution<int> alpha_channel(30, 60);
         std::uniform_int_distribution<int> vertex_count(3, 7);
 
         const int count = vertex_count(random_engine);
@@ -131,7 +132,7 @@ namespace
                 static_cast<std::uint8_t>(color_channel(random_engine)),
                 static_cast<std::uint8_t>(color_channel(random_engine)),
                 static_cast<std::uint8_t>(color_channel(random_engine)),
-                255
+                static_cast<std::uint8_t>(alpha_channel(random_engine))
             }
         };
     }
@@ -254,6 +255,7 @@ namespace
         std::mt19937& random_engine)
     {
         poly_paint::PolygonCollection collection(polygon_count);
+        std::uniform_int_distribution<int> alpha_channel(30, 60);
         const std::size_t initial_seed_count = seeds.size();
         for (std::size_t index = 0; index < initial_seed_count; ++index)
         {
@@ -281,7 +283,7 @@ namespace
             collection.add({
                 vertices,
                 vertex_count,
-                seed.color
+                {seed.color.r, seed.color.g, seed.color.b, static_cast<std::uint8_t>(alpha_channel(random_engine))}
             });
         }
         return collection;
@@ -346,10 +348,17 @@ namespace
         case 0:
         {
             poly_paint::RgbaColor color = updated_polygon.color();
-            std::uniform_int_distribution<int> channel(0, 2);
+            std::uniform_int_distribution<int> channel(0, 3);
             std::normal_distribution<float> color_change(0.0f, medium_mutation ? 64.0f : 16.0f);
-            std::uint8_t* channels[] {&color.r, &color.g, &color.b};
+            std::uniform_int_distribution<int> alpha_channel(30, 60);
+            std::uint8_t* channels[] {&color.r, &color.g, &color.b, &color.a};
             const std::size_t selected_channel = static_cast<std::size_t>(channel(random_engine));
+            if (selected_channel == 3)
+            {
+                color.a = static_cast<std::uint8_t>(alpha_channel(random_engine));
+                updated_polygon.set_color(color);
+                break;
+            }
             const int changed = std::clamp(
                 static_cast<int>(*channels[selected_channel] + color_change(random_engine)),
                 0,

@@ -192,12 +192,90 @@ namespace poly_paint
                     }
                     else
                     {
-                        for (std::size_t offset = 0; offset < pixel_count; ++offset)
+                        // Normal candidate buffers begin with an opaque black
+                        // background, and every prior compositing operation
+                        // preserves opaque destination alpha. That lets us use
+                        // a much cheaper RGB-only source-over blend here.
+                        if (output_rgba[pixel + 3] == UINT8_MAX)
                         {
-                            blend_source_over(output_rgba + pixel + offset * 4, color);
+                            blend_source_over_opaque_span(output_rgba + pixel, pixel_count, color);
+                        }
+                        else
+                        {
+                            for (std::size_t offset = 0; offset < pixel_count; ++offset)
+                            {
+                                blend_source_over(output_rgba + pixel + offset * 4, color);
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        static void blend_source_over_opaque_span(
+            std::uint8_t* destination,
+            std::size_t pixel_count,
+            RgbaColor source)
+        {
+            const __m256i zero = _mm256_setzero_si256();
+            const __m256i source_color = _mm256_set1_epi32(static_cast<int>(
+                static_cast<std::uint32_t>(source.r) |
+                (static_cast<std::uint32_t>(source.g) << 8) |
+                (static_cast<std::uint32_t>(source.b) << 16) |
+                (static_cast<std::uint32_t>(source.a) << 24)));
+            const __m256i source_alpha = _mm256_set1_epi16(static_cast<short>(source.a));
+            const __m256i inverse_source_alpha = _mm256_set1_epi16(
+                static_cast<short>(UINT8_MAX - source.a));
+            const __m256i rounding = _mm256_set1_epi16(128);
+            const __m256i opaque_alpha_mask = _mm256_set1_epi32(static_cast<int>(0xFF000000));
+
+            const auto blend_channels = [source_alpha, inverse_source_alpha, rounding](
+                const __m256i destination_channels,
+                const __m256i source_channels)
+            {
+                // For opaque destinations:
+                // output = round((source * alpha + destination * (255 - alpha)) / 255).
+                // The add/shift sequence is an exact integer divide-by-255
+                // rounding shortcut for this bounded 16-bit intermediate.
+                __m256i sum = _mm256_add_epi16(
+                    _mm256_mullo_epi16(source_channels, source_alpha),
+                    _mm256_mullo_epi16(destination_channels, inverse_source_alpha));
+                sum = _mm256_add_epi16(sum, rounding);
+                sum = _mm256_add_epi16(sum, _mm256_srli_epi16(sum, 8));
+                return _mm256_srli_epi16(sum, 8);
+            };
+
+            std::size_t offset = 0;
+            for (; offset + 8 <= pixel_count; offset += 8)
+            {
+                const __m256i destination_pixels = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i*>(destination + offset * 4));
+                const __m256i blended_low = blend_channels(
+                    _mm256_unpacklo_epi8(destination_pixels, zero),
+                    _mm256_unpacklo_epi8(source_color, zero));
+                const __m256i blended_high = blend_channels(
+                    _mm256_unpackhi_epi8(destination_pixels, zero),
+                    _mm256_unpackhi_epi8(source_color, zero));
+                const __m256i blended_pixels = _mm256_or_si256(
+                    _mm256_packus_epi16(blended_low, blended_high), opaque_alpha_mask);
+                _mm256_storeu_si256(
+                    reinterpret_cast<__m256i*>(destination + offset * 4), blended_pixels);
+            }
+
+            const std::uint32_t source_alpha_value = source.a;
+            const std::uint32_t inverse_alpha_value = UINT8_MAX - source_alpha_value;
+            for (; offset < pixel_count; ++offset)
+            {
+                std::uint8_t* pixel = destination + offset * 4;
+                const std::uint8_t source_channels[] {source.r, source.g, source.b};
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    std::uint32_t sum = static_cast<std::uint32_t>(source_channels[channel]) * source_alpha_value +
+                        static_cast<std::uint32_t>(pixel[channel]) * inverse_alpha_value + 128;
+                    sum += sum >> 8;
+                    pixel[channel] = static_cast<std::uint8_t>(sum >> 8);
+                }
+                pixel[3] = UINT8_MAX;
             }
         }
 
