@@ -6,10 +6,11 @@ project(poly_paint
     LANGUAGES CXX C
 )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(POLY_PAINT_ENABLE_AVX2 "Build the AVX2-optimized pixel kernels" ON)
 option(POLY_PAINT_REPORT_SIMD_CAPABILITIES "Report CPU SIMD features during CMake configuration" OFF)
 if(POLY_PAINT_REPORT_SIMD_CAPABILITIES)
     include(cmake/DetectSimdCapabilities.cmake)
@@ -42,6 +43,13 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
+    imgui_file_dialog
+    GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog.git
+    GIT_TAG v0.6.8
+    EXCLUDE_FROM_ALL
+)
+
+FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
     GIT_TAG master
@@ -54,7 +62,7 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 
-FetchContent_MakeAvailable(glfw glad imgui stb bs_thread_pool)
+FetchContent_MakeAvailable(glfw glad imgui imgui_file_dialog stb bs_thread_pool)
 
 add_library(bs_thread_pool INTERFACE)
 target_include_directories(bs_thread_pool INTERFACE ${bs_thread_pool_SOURCE_DIR}/include)
@@ -81,8 +89,30 @@ target_link_libraries(imgui PUBLIC glfw glad)
 
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
 
+target_link_libraries(ImGuiFileDialog PUBLIC imgui)
+
+if(POLY_PAINT_ENABLE_AVX2)
+    set(POLY_PAINT_KERNEL_SOURCE src/avx2_kernels.cpp)
+    message(STATUS "poly-paint pixel backend: AVX2")
+else()
+    set(POLY_PAINT_KERNEL_SOURCE src/scalar_kernels.cpp)
+    message(STATUS "poly-paint pixel backend: scalar")
+endif()
+
 add_executable(poly_paint
+    ${POLY_PAINT_KERNEL_SOURCE}
+    src/application.cpp
+    src/canvas.cpp
+    src/canvas_panel.cpp
+    src/controls_panel.cpp
+    src/evolution_runner.cpp
+    src/file_dialog.cpp
+    src/gui_layout.cpp
+    src/image_similarity_scorer.cpp
     src/main.cpp
+    src/original_image_view.cpp
+    src/polygon_evolution.cpp
+    src/polygon_rasterizer.cpp
 )
 
 target_include_directories(poly_paint
@@ -92,6 +122,7 @@ target_include_directories(poly_paint
 
 target_link_libraries(poly_paint
     PRIVATE
+        ImGuiFileDialog
         imgui
         glfw
         glad
@@ -99,12 +130,37 @@ target_link_libraries(poly_paint
 )
 
 if(WIN32)
-    target_link_libraries(poly_paint PRIVATE opengl32 comdlg32)
+    target_link_libraries(poly_paint PRIVATE opengl32)
 endif()
 
 if(MSVC)
-    # This application targets the detected AVX2-capable development machine.
-    target_compile_options(poly_paint PRIVATE /W4 /permissive- /arch:AVX2)
+    target_compile_options(poly_paint PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(poly_paint PRIVATE -Wall -Wextra -Wpedantic -mavx2)
+    target_compile_options(poly_paint PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(POLY_PAINT_ENABLE_AVX2)
+    if(MSVC)
+        set_source_files_properties(src/avx2_kernels.cpp PROPERTIES COMPILE_OPTIONS /arch:AVX2)
+    else()
+        set_source_files_properties(src/avx2_kernels.cpp PROPERTIES COMPILE_OPTIONS -mavx2)
+    endif()
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(poly_paint_core_tests
+        tests/core_tests.cpp
+        ${POLY_PAINT_KERNEL_SOURCE}
+        src/image_similarity_scorer.cpp
+        src/polygon_evolution.cpp
+        src/polygon_rasterizer.cpp
+    )
+    target_include_directories(poly_paint_core_tests PRIVATE src)
+    if(MSVC)
+        target_compile_options(poly_paint_core_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(poly_paint_core_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME poly_paint_core_tests COMMAND poly_paint_core_tests)
 endif()

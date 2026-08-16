@@ -4,11 +4,16 @@ Basic C++ GUI image app scaffolded with:
 
 - CMake
 - Dear ImGui
+- ImGuiFileDialog
 - GLFW
 - GLAD
 - stb_image_write
 
-It opens a native desktop window, renders a pixel canvas, lets you paint on it, generate noise/gradients, and export PNG files.
+The application is built as C++23. AVX2 acceleration is enabled by default;
+intrinsics and compiler flags are isolated to `src/avx2_kernels.cpp`. Configure
+with `-DPOLY_PAINT_ENABLE_AVX2=OFF` to use the portable scalar kernels instead.
+
+It opens a native desktop window, uses an ImGui file picker to load images, renders a pixel canvas, and exports PNG files.
 
 ## Build
 
@@ -28,6 +33,12 @@ cmake --build --preset build-clang-debug
 cmake --preset msvc-debug
 cmake --build --preset build-msvc-debug
 .\build\msvc-debug\Debug\poly_paint.exe
+```
+
+Run the core regression tests after either build with:
+
+```powershell
+ctest --test-dir build\msvc-debug -C Debug --output-on-failure
 ```
 
 You can also open the folder directly in Visual Studio 2022 and select the `msvc-debug` or `msvc-release` preset.

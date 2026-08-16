@@ -3,6 +3,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <span>
 #include <stdexcept>
 #include <algorithm>
 
@@ -23,7 +25,7 @@ namespace poly_paint
         std::uint8_t r {};
         std::uint8_t g {};
         std::uint8_t b {};
-        std::uint8_t a {255};
+        std::uint8_t a {std::numeric_limits<std::uint8_t>::max()};
     };
 
     // A polygon has any number of vertices (at least three) and exactly one
@@ -38,17 +40,20 @@ namespace poly_paint
 
         Polygon() = default;
 
-        Polygon(VertexStorage vertices, std::size_t vertex_count, RgbaColor color)
-            : m_vertices(vertices)
-            , m_vertex_count(vertex_count)
+        Polygon(std::span<const PolygonPoint> vertices, RgbaColor color)
+            : m_vertex_count(vertices.size())
             , m_color(color)
         {
-            validate_vertex_count(vertex_count);
+            if (vertices.size() < 3 || vertices.size() > max_vertices)
+            {
+                throw std::invalid_argument("A polygon requires between three and eight vertices.");
+            }
+            std::copy(vertices.begin(), vertices.end(), m_vertices.begin());
         }
 
-        [[nodiscard]] const VertexStorage& vertices() const noexcept
+        [[nodiscard]] std::span<const PolygonPoint> vertices() const noexcept
         {
-            return m_vertices;
+            return {m_vertices.data(), m_vertex_count};
         }
 
         [[nodiscard]] std::size_t vertex_count() const noexcept
@@ -85,14 +90,6 @@ namespace poly_paint
         }
 
     private:
-        static void validate_vertex_count(std::size_t vertex_count)
-        {
-            if (vertex_count < 3 || vertex_count > max_vertices)
-            {
-                throw std::invalid_argument("A polygon requires between three and eight vertices.");
-            }
-        }
-
         VertexStorage m_vertices {};
         std::size_t m_vertex_count {3};
         RgbaColor m_color;
@@ -150,6 +147,11 @@ namespace poly_paint
         }
 
         [[nodiscard]] std::size_t polygon_limit() const noexcept { return m_polygon_limit; }
+
+        [[nodiscard]] std::span<const Polygon> polygons() const noexcept
+        {
+            return {m_polygons.data(), m_size};
+        }
 
         [[nodiscard]] const Polygon* begin() const noexcept { return m_polygons.data(); }
         [[nodiscard]] const Polygon* end() const noexcept { return m_polygons.data() + m_size; }

@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <random>
+#include <span>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -64,7 +65,9 @@ namespace poly_paint
             , m_assess_fitness(std::move(assess_fitness))
             , m_is_complete(std::move(is_complete))
             , m_on_generation_completed(std::move(on_generation_completed))
-            , m_worker_pool(resolve_worker_count(settings))
+            , m_worker_pool(settings.worker_count > 0
+                ? settings.worker_count
+                : std::max<std::size_t>(1, std::thread::hardware_concurrency()))
         {
             if (m_settings.parent_count == 0)
             {
@@ -199,8 +202,8 @@ namespace poly_paint
 
     private:
         void assess_population(
-            const std::vector<Individual>& population,
-            std::vector<Fitness>& fitnesses) const
+            std::span<const Individual> population,
+            std::span<Fitness> fitnesses) const
         {
             if (m_worker_pool.get_thread_count() <= 1 || population.size() <= 1)
             {
@@ -223,15 +226,6 @@ namespace poly_paint
                 },
                 block_count);
             completed.get();
-        }
-
-        static std::size_t resolve_worker_count(const Settings& settings)
-        {
-            if (settings.worker_count > 0)
-            {
-                return settings.worker_count;
-            }
-            return std::max<std::size_t>(1, std::thread::hardware_concurrency());
         }
 
         struct ScoredIndividual
