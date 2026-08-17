@@ -15,6 +15,18 @@ namespace poly_paint
         best_guess
     };
 
+    struct EvolutionRunSettings
+    {
+        static constexpr std::size_t minimum_population_count = 1;
+        static constexpr std::size_t maximum_population_count = 50;
+
+        std::size_t maximum_generations {};
+        std::size_t polygon_count {};
+        std::size_t parent_count {5};
+        std::size_t offspring_count {1};
+        InitialPopulationMode initial_population {InitialPopulationMode::randomized};
+    };
+
     struct EvolutionUpdate
     {
         std::vector<std::uint8_t> rgba;
@@ -35,9 +47,7 @@ namespace poly_paint
 
         void start(
             const ImageSimilarityScorer& target,
-            std::size_t maximum_generations,
-            std::size_t polygon_count,
-            InitialPopulationMode initial_population);
+            const EvolutionRunSettings& settings);
         void request_pause() noexcept;
         void resume() noexcept;
         void request_stop() noexcept;

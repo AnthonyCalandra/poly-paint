@@ -26,6 +26,15 @@ namespace poly_paint
             ImGui::TextUnformatted(text.data(), text.data() + text.size());
         }
 
+        void set_text_input_width(std::string_view widest_expected_value)
+        {
+            const float text_width = ImGui::CalcTextSize(
+                widest_expected_value.data(),
+                widest_expected_value.data() + widest_expected_value.size()).x;
+            const float horizontal_padding = ImGui::GetStyle().FramePadding.x * 2.0f;
+            ImGui::SetNextItemWidth(text_width + horizontal_padding + 4.0f);
+        }
+
         void parse_generation_limit(
             std::string_view text,
             std::optional<std::size_t>& generation_limit,
@@ -88,6 +97,7 @@ namespace poly_paint
             std::optional<std::size_t>& generation_limit,
             std::string& error_message)
         {
+            set_text_input_width("1000000");
             ImGui::InputText(
                 "Generation limit",
                 text.data(),
@@ -110,12 +120,54 @@ namespace poly_paint
                 ImGui::TextUnformatted("No generation limit.");
             }
         }
+
+        void draw_population_count(
+            const char* label,
+            std::string_view name,
+            std::array<char, 4>& text,
+            std::optional<std::size_t>& value,
+            std::string& error_message)
+        {
+            set_text_input_width("50");
+            ImGui::InputText(
+                label,
+                text.data(),
+                text.size(),
+                ImGuiInputTextFlags_CharsDecimal);
+
+            unsigned long long parsed_value = 0;
+            const std::string_view input {text.data()};
+            const char* const end = input.data() + input.size();
+            const auto parse_result = std::from_chars(input.data(), end, parsed_value);
+            if (input.empty() || parse_result.ec != std::errc {} || parse_result.ptr != end ||
+                parsed_value < EvolutionRunSettings::minimum_population_count ||
+                parsed_value > EvolutionRunSettings::maximum_population_count)
+            {
+                value.reset();
+                error_message = std::format(
+                    "{} must be a whole number from {} to {}.",
+                    name,
+                    EvolutionRunSettings::minimum_population_count,
+                    EvolutionRunSettings::maximum_population_count);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.45f, 1.0f));
+                draw_text(error_message);
+                ImGui::PopStyleColor();
+                return;
+            }
+
+            value = static_cast<std::size_t>(parsed_value);
+            error_message.clear();
+        }
     }
 
     ControlsPanel::ControlsPanel()
     {
         constexpr std::string_view default_export_path = "output.png";
+        constexpr std::string_view default_parent_count = "5";
+        constexpr std::string_view default_offspring_count = "1";
         std::ranges::copy(default_export_path, m_export_path.begin());
+        std::ranges::copy(default_parent_count, m_parent_count_text.begin());
+        std::ranges::copy(default_offspring_count, m_offspring_count_text.begin());
     }
 
     ControlsPanelActions ControlsPanel::draw(
@@ -137,6 +189,10 @@ namespace poly_paint
             ImGui::EndDisabled();
         }
         ImGui::SliderFloat("Zoom", &m_zoom, 0.5f, 6.0f, "%.2fx");
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+        {
+            m_zoom = 1.0f;
+        }
         ImGui::Separator();
 
         draw_text(std::format("Current generation: {}", model.current_generation));
@@ -152,13 +208,27 @@ namespace poly_paint
         ImGui::RadioButton("Randomized polygons", &m_initial_population_mode, 0);
         ImGui::RadioButton("Best guess", &m_initial_population_mode, 1);
         draw_polygon_count_selector(m_polygon_count_preset);
+        draw_population_count(
+            "Mu (parents)",
+            "Mu",
+            m_parent_count_text,
+            m_parent_count,
+            m_parent_count_error);
+        draw_population_count(
+            "Lambda (offspring)",
+            "Lambda",
+            m_offspring_count_text,
+            m_offspring_count,
+            m_offspring_count_error);
         if (model.evolution_running)
         {
             ImGui::EndDisabled();
         }
 
-        const bool can_start = model.has_target &&
-            (!model.evolution_running || model.evolution_pause_requested);
+        const bool population_counts_valid = m_parent_count && m_offspring_count;
+        const bool can_start = model.evolution_running
+            ? model.evolution_pause_requested
+            : model.has_target && population_counts_valid;
         if (!can_start)
         {
             ImGui::BeginDisabled();
@@ -176,10 +246,13 @@ namespace poly_paint
             }
             else
             {
-                actions.start_evolution = EvolutionStartRequest {
-                    m_generation_limit.value_or(0),
-                    polygon_count_presets[static_cast<std::size_t>(m_polygon_count_preset)],
-                    m_initial_population_mode == 1
+                actions.start_evolution = EvolutionRunSettings {
+                    .maximum_generations = m_generation_limit.value_or(0),
+                    .polygon_count =
+                        polygon_count_presets[static_cast<std::size_t>(m_polygon_count_preset)],
+                    .parent_count = *m_parent_count,
+                    .offspring_count = *m_offspring_count,
+                    .initial_population = m_initial_population_mode == 1
                         ? InitialPopulationMode::best_guess
                         : InitialPopulationMode::randomized
                 };

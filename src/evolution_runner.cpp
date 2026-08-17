@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <random>
 #include <span>
@@ -30,9 +31,7 @@ namespace poly_paint
 
         void start(
             const ImageSimilarityScorer& target,
-            std::size_t maximum_generations,
-            std::size_t polygon_count,
-            InitialPopulationMode initial_population)
+            const EvolutionRunSettings& settings)
         {
             if (running)
             {
@@ -43,11 +42,20 @@ namespace poly_paint
                 worker.join();
             }
 
+            if (settings.parent_count < EvolutionRunSettings::minimum_population_count ||
+                settings.parent_count > EvolutionRunSettings::maximum_population_count ||
+                settings.offspring_count < EvolutionRunSettings::minimum_population_count ||
+                settings.offspring_count > EvolutionRunSettings::maximum_population_count)
+            {
+                throw std::invalid_argument(
+                    "Mu and lambda must each be between one and fifty.");
+            }
+
             std::vector<ContrastSeed> seeds;
-            if (initial_population == InitialPopulationMode::best_guess)
+            if (settings.initial_population == InitialPopulationMode::best_guess)
             {
                 seeds = find_high_contrast_seeds(
-                    target.target_rgba(), target.width(), target.height(), polygon_count);
+                    target.target_rgba(), target.width(), target.height(), settings.polygon_count);
             }
 
             {
@@ -60,16 +68,12 @@ namespace poly_paint
             worker = std::thread([
                 this,
                 target,
-                maximum_generations,
-                polygon_count,
-                initial_population,
+                settings,
                 seeds = std::move(seeds)]() mutable
             {
                 run(
                     target,
-                    maximum_generations,
-                    polygon_count,
-                    initial_population,
+                    settings,
                     std::move(seeds));
                 running = false;
             });
@@ -132,28 +136,28 @@ namespace poly_paint
     private:
         void run(
             const ImageSimilarityScorer& target,
-            std::size_t maximum_generations,
-            std::size_t polygon_count,
-            InitialPopulationMode initial_population,
+            const EvolutionRunSettings& run_settings,
             std::vector<ContrastSeed> seeds)
         {
             using Strategy = EvolutionStrategy<PolygonCollection>;
             Strategy::Settings settings;
-            settings.parent_count = 5;
-            settings.offspring_count = 20;
-            settings.max_generations = maximum_generations;
+            settings.parent_count = run_settings.parent_count;
+            settings.offspring_count = run_settings.offspring_count;
+            settings.max_generations = run_settings.maximum_generations;
 
             const std::size_t image_byte_count =
                 checked_rgba_byte_count(target.width(), target.height());
-            std::vector<std::uint8_t> display_image(image_byte_count);
+            std::mutex best_render_mutex;
+            double best_render_score = -std::numeric_limits<double>::infinity();
+            std::vector<std::uint8_t> best_render(image_byte_count);
 
             Strategy strategy(
                 settings,
-                [initial_population,
+                [initial_population = run_settings.initial_population,
                  seeds = std::move(seeds),
                  width = target.width(),
                  height = target.height(),
-                 polygon_count](std::mt19937& random_engine)
+                 polygon_count = run_settings.polygon_count](std::mt19937& random_engine)
                 {
                     if (initial_population == InitialPopulationMode::best_guess)
                     {
@@ -163,14 +167,17 @@ namespace poly_paint
                     return make_random_polygon_collection(random_engine, polygon_count);
                 },
                 mutate_polygon_collection,
-                [&target](const PolygonCollection& candidate)
+                [&target,
+                 image_byte_count,
+                 &best_render_mutex,
+                 &best_render_score,
+                 &best_render](const PolygonCollection& candidate)
                 {
                     constexpr std::size_t tile_row_count = 64;
-                    thread_local std::vector<std::uint8_t> tile_storage;
-                    const std::size_t maximum_tile_size =
-                        checked_rgba_byte_count(
-                            target.width(), std::min(tile_row_count, target.height()));
-                    tile_storage.resize(maximum_tile_size);
+                    // Assemble the same tiles used for scoring into a reusable
+                    // worker-local image so a new winner does not need rerasterizing.
+                    thread_local std::vector<std::uint8_t> candidate_render;
+                    candidate_render.resize(image_byte_count);
 
                     std::uint64_t total_difference = 0;
                     for (std::size_t first_row = 0;
@@ -181,25 +188,36 @@ namespace poly_paint
                             std::min(tile_row_count, target.height() - first_row);
                         const std::size_t tile_size =
                             checked_rgba_byte_count(target.width(), row_count);
+                        const std::size_t tile_offset =
+                            checked_rgba_byte_count(target.width(), first_row);
                         const std::span<std::uint8_t> tile =
-                            std::span<std::uint8_t> {tile_storage}.first(tile_size);
+                            std::span<std::uint8_t> {candidate_render}.subspan(
+                                tile_offset, tile_size);
                         rasterize_rows_into(
                             candidate, target.width(), target.height(), first_row, row_count, tile);
                         total_difference += target.difference_for_rows(tile, first_row, row_count);
                     }
-                    return target.score_from_total_difference(total_difference);
+                    const double score = target.score_from_total_difference(total_difference);
+                    {
+                        std::lock_guard lock(best_render_mutex);
+                        if (score > best_render_score)
+                        {
+                            best_render_score = score;
+                            best_render = candidate_render;
+                        }
+                    }
+                    return score;
                 },
                 {},
-                [this, &target, &display_image](
+                [this, &best_render_mutex, &best_render](
                     std::size_t generation,
-                    const PolygonCollection& best_candidate,
+                    const PolygonCollection&,
                     const double& score)
                 {
-                    rasterize_into(
-                        best_candidate, target.width(), target.height(), display_image);
                     {
+                        std::lock_guard render_lock(best_render_mutex);
                         std::lock_guard lock(update_mutex);
-                        latest_update = EvolutionUpdate {display_image, generation, score};
+                        latest_update = EvolutionUpdate {best_render, generation, score};
                     }
                     if (pause_requested)
                     {
@@ -226,11 +244,9 @@ namespace poly_paint
 
     void EvolutionRunner::start(
         const ImageSimilarityScorer& target,
-        std::size_t maximum_generations,
-        std::size_t polygon_count,
-        InitialPopulationMode initial_population)
+        const EvolutionRunSettings& settings)
     {
-        m_impl->start(target, maximum_generations, polygon_count, initial_population);
+        m_impl->start(target, settings);
     }
 
     void EvolutionRunner::request_pause() noexcept { m_impl->request_pause(); }

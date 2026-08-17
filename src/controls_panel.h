@@ -23,20 +23,13 @@ namespace poly_paint
         std::string_view status_message;
     };
 
-    struct EvolutionStartRequest
-    {
-        std::size_t maximum_generations {};
-        std::size_t polygon_count {};
-        InitialPopulationMode initial_population {InitialPopulationMode::randomized};
-    };
-
     struct ControlsPanelActions
     {
         bool open_image {};
         bool resume_evolution {};
         bool pause_evolution {};
         bool stop_evolution {};
-        std::optional<EvolutionStartRequest> start_evolution;
+        std::optional<EvolutionRunSettings> start_evolution;
         std::optional<std::string> save_path;
     };
 
@@ -56,6 +49,12 @@ namespace poly_paint
         std::array<char, 32> m_generation_limit_text {};
         std::optional<std::size_t> m_generation_limit;
         std::string m_generation_limit_error;
+        std::array<char, 4> m_parent_count_text {};
+        std::optional<std::size_t> m_parent_count {5};
+        std::string m_parent_count_error;
+        std::array<char, 4> m_offspring_count_text {};
+        std::optional<std::size_t> m_offspring_count {1};
+        std::string m_offspring_count_error;
         int m_initial_population_mode {};
         int m_polygon_count_preset {};
         std::array<char, 260> m_export_path {};

@@ -224,9 +224,7 @@ namespace poly_paint
                     m_best_score = 0.0;
                     m_evolution.start(
                         *m_target_scorer,
-                        actions.start_evolution->maximum_generations,
-                        actions.start_evolution->polygon_count,
-                        actions.start_evolution->initial_population);
+                        *actions.start_evolution);
                     m_status_message = "Evolution running.";
                 }
                 if (actions.pause_evolution)
