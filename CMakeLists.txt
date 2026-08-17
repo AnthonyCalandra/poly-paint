@@ -152,11 +152,13 @@ if(BUILD_TESTING)
     add_executable(poly_paint_core_tests
         tests/core_tests.cpp
         ${POLY_PAINT_KERNEL_SOURCE}
+        src/evolution_runner.cpp
         src/image_similarity_scorer.cpp
         src/polygon_evolution.cpp
         src/polygon_rasterizer.cpp
     )
     target_include_directories(poly_paint_core_tests PRIVATE src)
+    target_link_libraries(poly_paint_core_tests PRIVATE bs_thread_pool)
     if(MSVC)
         target_compile_options(poly_paint_core_tests PRIVATE /W4 /permissive-)
     else()

@@ -1,5 +1,7 @@
 #include "image_similarity_scorer.h"
 #include "image_dimensions.h"
+#include "evolution_strategy.h"
+#include "evolution_runner.h"
 #include "polygon.h"
 #include "polygon_evolution.h"
 #include "polygon_rasterizer.h"
@@ -7,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -14,6 +17,7 @@
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace
@@ -96,9 +100,111 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool test_evolution_migration()
+    {
+        using Strategy = poly_paint::EvolutionStrategy<int, int>;
+        Strategy::Settings settings;
+        settings.parent_count = 1;
+        settings.offspring_count = 1;
+        settings.max_generations = 2;
+        settings.worker_count = 1;
+
+        std::vector<int> generation_bests;
+        Strategy strategy(
+            settings,
+            [](std::mt19937&)
+            {
+                return 1;
+            },
+            [](const int& parent, std::mt19937&)
+            {
+                return parent + 1;
+            },
+            [](const int& individual)
+            {
+                return individual;
+            },
+            {},
+            [&generation_bests](std::size_t, const int& best, const int&)
+            {
+                generation_bests.push_back(best);
+                return true;
+            },
+            [](std::size_t generation) -> std::optional<Strategy::Migrant>
+            {
+                if (generation == 1)
+                {
+                    return Strategy::Migrant {50, 50};
+                }
+                return std::nullopt;
+            });
+
+        std::mt19937 random_engine(42);
+        const Strategy::Result result = strategy.run(random_engine);
+        if (generation_bests != std::vector<int> {50, 51} || result.best_individual != 51)
+        {
+            std::cerr << "a migrant did not enter selection and produce local descendants\n";
+            return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool test_cooperative_runner()
+    {
+        constexpr std::size_t width = 2;
+        constexpr std::size_t height = 2;
+        constexpr std::array<std::uint8_t, width * height * poly_paint::rgba_channel_count> target {
+            0, 0, 0, 255,
+            255, 255, 255, 255,
+            255, 0, 0, 255,
+            0, 0, 255, 255};
+        const poly_paint::ImageSimilarityScorer scorer(width, height, target);
+        poly_paint::EvolutionRunSettings settings;
+        settings.maximum_generations = 3;
+        settings.polygon_count = 1;
+        settings.parent_count = 1;
+        settings.offspring_count = 1;
+        settings.island_count = 3;
+
+        poly_paint::EvolutionRunner runner;
+        runner.start(scorer, settings);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (runner.running() && std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::yield();
+        }
+        if (runner.running())
+        {
+            runner.stop_and_wait();
+            std::cerr << "cooperative islands did not finish within the test deadline\n";
+            return false;
+        }
+        const std::optional<bool> stopped = runner.join_if_finished();
+        const std::optional<poly_paint::EvolutionUpdate> update = runner.take_latest_update();
+        if (!stopped || *stopped || !update || update->generation != settings.maximum_generations)
+        {
+            std::cerr << "cooperative island lifecycle or generation reporting was incorrect\n";
+            return false;
+        }
+        if (scorer.score(update->rgba, width, height) != update->score)
+        {
+            std::cerr << "the published global-best image and score did not match\n";
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool run_tests()
     {
         if (!test_opaque_blend_kernel())
+        {
+            return false;
+        }
+        if (!test_evolution_migration())
+        {
+            return false;
+        }
+        if (!test_cooperative_runner())
         {
             return false;
         }

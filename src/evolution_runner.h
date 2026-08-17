@@ -24,6 +24,8 @@ namespace poly_paint
         std::size_t polygon_count {};
         std::size_t parent_count {5};
         std::size_t offspring_count {1};
+        // Zero creates one cooperative island per available logical processor.
+        std::size_t island_count {};
         InitialPopulationMode initial_population {InitialPopulationMode::randomized};
     };
 

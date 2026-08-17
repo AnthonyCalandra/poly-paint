@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <random>
 #include <span>
@@ -40,6 +41,10 @@ namespace poly_paint
         using CompletionPredicate = std::function<bool(const Individual&, const Fitness&)>;
         // Return false to stop after the current generation has been evaluated.
         using ProgressCallback = std::function<bool(std::size_t, const Individual&, const Fitness&)>;
+        using Migrant = std::pair<Individual, Fitness>;
+        // A migrant is already scored and competes with the local parents and
+        // offspring in the requested generation. Returning no value skips migration.
+        using MigrationSource = std::function<std::optional<Migrant>(std::size_t)>;
 
         struct Result
         {
@@ -58,16 +63,16 @@ namespace poly_paint
             MutationFunction mutate,
             FitnessFunction assess_fitness,
             CompletionPredicate is_complete = {},
-            ProgressCallback on_generation_completed = {})
+            ProgressCallback on_generation_completed = {},
+            MigrationSource migrant_source = {})
             : m_settings(settings)
             , m_make_random_individual(std::move(make_random_individual))
             , m_mutate(std::move(mutate))
             , m_assess_fitness(std::move(assess_fitness))
             , m_is_complete(std::move(is_complete))
             , m_on_generation_completed(std::move(on_generation_completed))
-            , m_worker_pool(settings.worker_count > 0
-                ? settings.worker_count
-                : std::max<std::size_t>(1, std::thread::hardware_concurrency()))
+            , m_migrant_source(std::move(migrant_source))
+            , m_worker_pool(make_worker_pool(settings.worker_count))
         {
             if (m_settings.parent_count == 0)
             {
@@ -101,7 +106,7 @@ namespace poly_paint
             std::vector<ScoredIndividual> parents;
             parents.reserve(m_settings.parent_count);
             std::vector<ScoredIndividual> candidates;
-            candidates.reserve(maximum_population_count);
+            candidates.reserve(maximum_population_count + (m_migrant_source ? 1 : 0));
             std::vector<Fitness> fitnesses;
             fitnesses.reserve(initial_population_count);
             std::size_t generations_completed = 0;
@@ -131,6 +136,20 @@ namespace poly_paint
                         best_fitness = fitness;
                     }
                     candidates.push_back({std::move(individual), std::move(fitness)});
+                }
+                if (m_migrant_source)
+                {
+                    std::optional<Migrant> migrant = m_migrant_source(generation + 1);
+                    if (migrant)
+                    {
+                        if (!best_fitness || migrant->second > *best_fitness)
+                        {
+                            best_individual = migrant->first;
+                            best_fitness = migrant->second;
+                        }
+                        candidates.push_back(
+                            {std::move(migrant->first), std::move(migrant->second)});
+                    }
                 }
 
                 std::stable_sort(
@@ -201,11 +220,24 @@ namespace poly_paint
         }
 
     private:
+        [[nodiscard]] static std::unique_ptr<BS::thread_pool<>> make_worker_pool(
+            std::size_t requested_worker_count)
+        {
+            const std::size_t worker_count = requested_worker_count > 0
+                ? requested_worker_count
+                : std::max<std::size_t>(1, std::thread::hardware_concurrency());
+            if (worker_count <= 1)
+            {
+                return {};
+            }
+            return std::make_unique<BS::thread_pool<>>(worker_count);
+        }
+
         void assess_population(
             std::span<const Individual> population,
             std::span<Fitness> fitnesses) const
         {
-            if (m_worker_pool.get_thread_count() <= 1 || population.size() <= 1)
+            if (!m_worker_pool || population.size() <= 1)
             {
                 for (std::size_t index = 0; index < population.size(); ++index)
                 {
@@ -216,8 +248,8 @@ namespace poly_paint
 
             const std::size_t block_count = std::min(
                 population.size(),
-                m_worker_pool.get_thread_count() * 4);
-            BS::multi_future<void> completed = m_worker_pool.submit_loop(
+                m_worker_pool->get_thread_count() * 4);
+            BS::multi_future<void> completed = m_worker_pool->submit_loop(
                 std::size_t {0},
                 population.size(),
                 [this, &population, &fitnesses](std::size_t index)
@@ -240,6 +272,7 @@ namespace poly_paint
         FitnessFunction m_assess_fitness;
         CompletionPredicate m_is_complete;
         ProgressCallback m_on_generation_completed;
-        mutable BS::thread_pool<> m_worker_pool;
+        MigrationSource m_migrant_source;
+        mutable std::unique_ptr<BS::thread_pool<>> m_worker_pool;
     };
 }
