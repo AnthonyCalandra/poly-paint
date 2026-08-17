@@ -3,6 +3,7 @@
 #include "polygon.h"
 #include "polygon_evolution.h"
 #include "polygon_rasterizer.h"
+#include "pixel_kernels.h"
 
 #include <algorithm>
 #include <array>
@@ -17,8 +18,91 @@
 
 namespace
 {
+    [[nodiscard]] std::uint8_t reference_opaque_blend_channel(
+        std::uint8_t destination,
+        std::uint8_t source,
+        std::uint8_t alpha)
+    {
+        constexpr std::uint32_t maximum_channel =
+            std::numeric_limits<std::uint8_t>::max();
+        std::uint32_t sum = static_cast<std::uint32_t>(source) * alpha +
+            static_cast<std::uint32_t>(destination) * (maximum_channel - alpha) + 128;
+        sum += sum >> 8;
+        return static_cast<std::uint8_t>(sum >> 8);
+    }
+
+    [[nodiscard]] bool test_opaque_blend_kernel()
+    {
+        constexpr std::uint8_t maximum_channel =
+            std::numeric_limits<std::uint8_t>::max();
+        constexpr std::array<std::size_t, 10> pixel_counts {1, 2, 3, 4, 7, 8, 9, 15, 16, 33};
+        constexpr std::array<std::uint8_t, 7> alpha_values {0, 1, 30, 60, 127, 254, 255};
+        constexpr poly_paint::RgbaColor source_rgb {17, 139, 251, 0};
+
+        for (const std::size_t pixel_count : pixel_counts)
+        {
+            for (const std::uint8_t alpha : alpha_values)
+            {
+                std::vector<std::uint8_t> actual(pixel_count * poly_paint::rgba_channel_count);
+                for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
+                {
+                    const std::size_t offset = pixel * poly_paint::rgba_channel_count;
+                    actual[offset] = static_cast<std::uint8_t>((pixel * 37 + 11) % 256);
+                    actual[offset + 1] = static_cast<std::uint8_t>((pixel * 73 + 29) % 256);
+                    actual[offset + 2] = static_cast<std::uint8_t>((pixel * 109 + 47) % 256);
+                    actual[offset + poly_paint::alpha_channel_index] = maximum_channel;
+                }
+
+                std::vector<std::uint8_t> expected = actual;
+                const poly_paint::RgbaColor source {
+                    source_rgb.r, source_rgb.g, source_rgb.b, alpha};
+                for (std::size_t offset = 0;
+                     offset < expected.size();
+                     offset += poly_paint::rgba_channel_count)
+                {
+                    expected[offset] =
+                        reference_opaque_blend_channel(expected[offset], source.r, alpha);
+                    expected[offset + 1] =
+                        reference_opaque_blend_channel(expected[offset + 1], source.g, alpha);
+                    expected[offset + 2] =
+                        reference_opaque_blend_channel(expected[offset + 2], source.b, alpha);
+                }
+
+                std::array<poly_paint::detail::MutableRgbaSpan, 2> spans {};
+                std::size_t span_count = 1;
+                if (pixel_count > 8)
+                {
+                    constexpr std::size_t first_span_size =
+                        8 * poly_paint::rgba_channel_count;
+                    spans[0] = std::span<std::uint8_t> {actual}.first(first_span_size);
+                    spans[1] = std::span<std::uint8_t> {actual}.subspan(first_span_size);
+                    span_count = 2;
+                }
+                else
+                {
+                    spans[0] = actual;
+                }
+                poly_paint::detail::blend_source_over_opaque(
+                    std::span<const poly_paint::detail::MutableRgbaSpan> {
+                        spans.data(), span_count},
+                    source);
+                if (actual != expected)
+                {
+                    std::cerr << "opaque blend kernel differed from the scalar reference\n";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] bool run_tests()
     {
+        if (!test_opaque_blend_kernel())
+        {
+            return false;
+        }
+
         constexpr std::uint8_t maximum_channel = std::numeric_limits<std::uint8_t>::max();
         const std::array vertices {
             poly_paint::PolygonPoint {0.0f, 0.0f},

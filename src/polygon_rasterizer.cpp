@@ -54,18 +54,10 @@ namespace poly_paint
             destination[alpha_channel_index] = static_cast<std::uint8_t>(output_alpha);
         }
 
-        void paint_span(std::span<std::uint8_t> destination, RgbaColor color)
+        void blend_source_over_span(
+            std::span<std::uint8_t> destination,
+            RgbaColor color)
         {
-            if (color.a == maximum_channel)
-            {
-                detail::fill_rgba_pixels(destination, color);
-                return;
-            }
-            if (destination[alpha_channel_index] == maximum_channel)
-            {
-                detail::blend_source_over_opaque(destination, color);
-                return;
-            }
             for (std::size_t offset = 0; offset < destination.size(); offset += rgba_channel_count)
             {
                 blend_source_over(
@@ -118,6 +110,22 @@ namespace poly_paint
 
             const std::ptrdiff_t first_y = std::max(unclamped_first_y, signed_first_row);
             const std::ptrdiff_t last_y = std::min(unclamped_last_y, signed_last_row);
+            constexpr std::size_t opaque_span_batch_capacity = 128;
+            std::array<detail::MutableRgbaSpan, opaque_span_batch_capacity> opaque_spans {};
+            std::size_t opaque_span_count = 0;
+            const RgbaColor color = polygon.color();
+            const auto flush_opaque_spans = [&]
+            {
+                if (opaque_span_count == 0)
+                {
+                    return;
+                }
+                detail::blend_source_over_opaque(
+                    std::span<const detail::MutableRgbaSpan> {
+                        opaque_spans.data(), opaque_span_count},
+                    color);
+                opaque_span_count = 0;
+            };
             std::array<float, Polygon::max_vertices> intersections {};
             for (std::ptrdiff_t y = first_y; y <= last_y; ++y)
             {
@@ -167,9 +175,27 @@ namespace poly_paint
                          static_cast<std::size_t>(first_x)) * rgba_channel_count;
                     const std::size_t byte_count =
                         static_cast<std::size_t>(last_x - first_x + 1) * rgba_channel_count;
-                    paint_span(output_rgba.subspan(first_byte, byte_count), polygon.color());
+                    const std::span<std::uint8_t> destination =
+                        output_rgba.subspan(first_byte, byte_count);
+                    if (color.a == maximum_channel)
+                    {
+                        detail::fill_rgba_pixels(destination, color);
+                    }
+                    else if (destination[alpha_channel_index] == maximum_channel)
+                    {
+                        opaque_spans[opaque_span_count++] = destination;
+                        if (opaque_span_count == opaque_spans.size())
+                        {
+                            flush_opaque_spans();
+                        }
+                    }
+                    else
+                    {
+                        blend_source_over_span(destination, color);
+                    }
                 }
             }
+            flush_opaque_spans();
         }
     }
 

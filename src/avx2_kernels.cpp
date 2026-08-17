@@ -56,59 +56,80 @@ namespace poly_paint::detail
         }
     }
 
-    void blend_source_over_opaque(std::span<std::uint8_t> rgba, RgbaColor source)
+    void blend_source_over_opaque(
+        std::span<const MutableRgbaSpan> rgba_spans,
+        RgbaColor source)
     {
-        validate_rgba(rgba);
+        for (const MutableRgbaSpan rgba : rgba_spans)
+        {
+            validate_rgba(rgba);
+        }
+
         const __m256i zero = _mm256_setzero_si256();
         const __m256i source_color = _mm256_set1_epi32(static_cast<int>(pack_color(source)));
         const __m256i source_alpha = _mm256_set1_epi16(static_cast<short>(source.a));
         const __m256i inverse_source_alpha = _mm256_set1_epi16(
             static_cast<short>(maximum_channel - source.a));
         const __m256i rounding = _mm256_set1_epi16(128);
+        const __m256i source_channels = _mm256_unpacklo_epi8(source_color, zero);
+        const __m256i source_terms = _mm256_add_epi16(
+            _mm256_mullo_epi16(source_channels, source_alpha), rounding);
         const auto opaque_alpha = static_cast<std::uint32_t>(maximum_channel) << 24;
         const __m256i opaque_alpha_mask = _mm256_set1_epi32(static_cast<int>(opaque_alpha));
-
-        const auto blend_channels = [source_alpha, inverse_source_alpha, rounding](
-            __m256i destination_channels,
-            __m256i source_channels)
-        {
-            __m256i sum = _mm256_add_epi16(
-                _mm256_mullo_epi16(source_channels, source_alpha),
-                _mm256_mullo_epi16(destination_channels, inverse_source_alpha));
-            sum = _mm256_add_epi16(sum, rounding);
-            sum = _mm256_add_epi16(sum, _mm256_srli_epi16(sum, 8));
-            return _mm256_srli_epi16(sum, 8);
-        };
-
-        std::size_t offset = 0;
-        for (; offset + 32 <= rgba.size(); offset += 32)
-        {
-            const __m256i destination = _mm256_loadu_si256(
-                reinterpret_cast<const __m256i*>(rgba.data() + offset));
-            const __m256i blended_low = blend_channels(
-                _mm256_unpacklo_epi8(destination, zero),
-                _mm256_unpacklo_epi8(source_color, zero));
-            const __m256i blended_high = blend_channels(
-                _mm256_unpackhi_epi8(destination, zero),
-                _mm256_unpackhi_epi8(source_color, zero));
-            const __m256i blended = _mm256_or_si256(
-                _mm256_packus_epi16(blended_low, blended_high), opaque_alpha_mask);
-            _mm256_storeu_si256(reinterpret_cast<__m256i*>(rgba.data() + offset), blended);
-        }
-
         const std::uint32_t alpha = source.a;
         const std::uint32_t inverse_alpha = maximum_channel - alpha;
-        const std::array source_channels {source.r, source.g, source.b};
-        for (; offset < rgba.size(); offset += rgba_channel_count)
+        const std::uint32_t red_source_term =
+            static_cast<std::uint32_t>(source.r) * alpha + 128;
+        const std::uint32_t green_source_term =
+            static_cast<std::uint32_t>(source.g) * alpha + 128;
+        const std::uint32_t blue_source_term =
+            static_cast<std::uint32_t>(source.b) * alpha + 128;
+
+        for (const MutableRgbaSpan rgba : rgba_spans)
         {
-            for (std::size_t channel = 0; channel < source_channels.size(); ++channel)
+            std::size_t offset = 0;
+            for (; offset + 32 <= rgba.size(); offset += 32)
             {
-                std::uint32_t sum = static_cast<std::uint32_t>(source_channels[channel]) * alpha +
-                    static_cast<std::uint32_t>(rgba[offset + channel]) * inverse_alpha + 128;
-                sum += sum >> 8;
-                rgba[offset + channel] = static_cast<std::uint8_t>(sum >> 8);
+                const __m256i destination = _mm256_loadu_si256(
+                    reinterpret_cast<const __m256i*>(rgba.data() + offset));
+                __m256i blended_low = _mm256_add_epi16(
+                    source_terms,
+                    _mm256_mullo_epi16(
+                        _mm256_unpacklo_epi8(destination, zero), inverse_source_alpha));
+                blended_low = _mm256_add_epi16(
+                    blended_low, _mm256_srli_epi16(blended_low, 8));
+                blended_low = _mm256_srli_epi16(blended_low, 8);
+
+                __m256i blended_high = _mm256_add_epi16(
+                    source_terms,
+                    _mm256_mullo_epi16(
+                        _mm256_unpackhi_epi8(destination, zero), inverse_source_alpha));
+                blended_high = _mm256_add_epi16(
+                    blended_high, _mm256_srli_epi16(blended_high, 8));
+                blended_high = _mm256_srli_epi16(blended_high, 8);
+
+                const __m256i blended = _mm256_or_si256(
+                    _mm256_packus_epi16(blended_low, blended_high), opaque_alpha_mask);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(rgba.data() + offset), blended);
             }
-            rgba[offset + alpha_channel_index] = maximum_channel;
+
+            for (; offset < rgba.size(); offset += rgba_channel_count)
+            {
+                std::uint32_t red = red_source_term +
+                    static_cast<std::uint32_t>(rgba[offset]) * inverse_alpha;
+                red += red >> 8;
+                rgba[offset] = static_cast<std::uint8_t>(red >> 8);
+
+                std::uint32_t green = green_source_term +
+                    static_cast<std::uint32_t>(rgba[offset + 1]) * inverse_alpha;
+                green += green >> 8;
+                rgba[offset + 1] = static_cast<std::uint8_t>(green >> 8);
+
+                std::uint32_t blue = blue_source_term +
+                    static_cast<std::uint32_t>(rgba[offset + 2]) * inverse_alpha;
+                blue += blue >> 8;
+                rgba[offset + 2] = static_cast<std::uint8_t>(blue >> 8);
+            }
         }
     }
 
