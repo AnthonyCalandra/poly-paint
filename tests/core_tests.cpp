@@ -149,6 +149,53 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool test_polygon_collection_storage()
+    {
+        const std::array vertices {
+            poly_paint::PolygonPoint {0.0f, 0.0f},
+            poly_paint::PolygonPoint {1.0f, 0.0f},
+            poly_paint::PolygonPoint {0.0f, 1.0f}};
+        const auto make_polygon = [&vertices](std::uint8_t red)
+        {
+            return poly_paint::Polygon(vertices, {red, 0, 0, 255});
+        };
+
+        poly_paint::PolygonCollection original(3);
+        if (!original.add(make_polygon(10)) ||
+            !original.add(make_polygon(20)) ||
+            !original.add(make_polygon(30)) ||
+            original.add(make_polygon(40)))
+        {
+            std::cerr << "polygon collection did not enforce its selected limit\n";
+            return false;
+        }
+
+        poly_paint::PolygonCollection copy = original;
+        copy.remove(1);
+        if (copy.size() != 2 ||
+            copy.polygon_at(0).color().r != 10 ||
+            copy.polygon_at(1).color().r != 30 ||
+            copy.polygon_limit() != 3)
+        {
+            std::cerr << "polygon collection copy or removal changed its contents\n";
+            return false;
+        }
+
+        poly_paint::PolygonCollection moved = std::move(copy);
+        if (!moved.add(make_polygon(40)) || !moved.full())
+        {
+            std::cerr << "moved polygon collection lost its capacity or contents\n";
+            return false;
+        }
+        moved.clear();
+        if (!moved.empty() || moved.polygon_limit() != 3)
+        {
+            std::cerr << "clearing a polygon collection changed its selected limit\n";
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool test_cooperative_runner()
     {
         constexpr std::size_t width = 2;
@@ -201,6 +248,10 @@ namespace
             return false;
         }
         if (!test_evolution_migration())
+        {
+            return false;
+        }
+        if (!test_polygon_collection_storage())
         {
             return false;
         }

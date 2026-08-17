@@ -1,12 +1,14 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <span>
 #include <stdexcept>
-#include <algorithm>
+#include <utility>
+#include <vector>
 
 namespace poly_paint
 {
@@ -96,13 +98,14 @@ namespace poly_paint
     };
 
     // This is the evolution-strategy individual for image approximation. A
-    // candidate may use fewer than 50 polygons while it is being constructed,
-    // but it can never exceed the rendering budget.
+    // candidate may use fewer polygons while it is being constructed, but it
+    // can never exceed the selected rendering budget.
     class PolygonCollection
     {
     public:
         static constexpr std::size_t default_polygon_count = 50;
         static constexpr std::size_t max_polygon_capacity = 1'000;
+        using const_iterator = std::vector<Polygon>::const_iterator;
 
         explicit PolygonCollection(std::size_t polygon_limit = default_polygon_count)
             : m_polygon_limit(polygon_limit)
@@ -111,34 +114,17 @@ namespace poly_paint
             {
                 throw std::invalid_argument("Polygon collection size must be between one and 1,000.");
             }
-        }
-
-        PolygonCollection(const PolygonCollection& other)
-            : m_polygon_limit(other.m_polygon_limit)
-            , m_size(other.m_size)
-        {
-            std::copy_n(other.m_polygons.begin(), m_size, m_polygons.begin());
-        }
-
-        PolygonCollection& operator=(const PolygonCollection& other)
-        {
-            if (this != &other)
-            {
-                m_polygon_limit = other.m_polygon_limit;
-                m_size = other.m_size;
-                std::copy_n(other.m_polygons.begin(), m_size, m_polygons.begin());
-            }
-            return *this;
+            m_polygons.reserve(m_polygon_limit);
         }
 
         [[nodiscard]] std::size_t size() const noexcept
         {
-            return m_size;
+            return m_polygons.size();
         }
 
         [[nodiscard]] bool empty() const noexcept
         {
-            return m_size == 0;
+            return m_polygons.empty();
         }
 
         [[nodiscard]] bool full() const noexcept
@@ -150,15 +136,15 @@ namespace poly_paint
 
         [[nodiscard]] std::span<const Polygon> polygons() const noexcept
         {
-            return {m_polygons.data(), m_size};
+            return m_polygons;
         }
 
-        [[nodiscard]] const Polygon* begin() const noexcept { return m_polygons.data(); }
-        [[nodiscard]] const Polygon* end() const noexcept { return m_polygons.data() + m_size; }
+        [[nodiscard]] const_iterator begin() const noexcept { return m_polygons.cbegin(); }
+        [[nodiscard]] const_iterator end() const noexcept { return m_polygons.cend(); }
 
         [[nodiscard]] Polygon& polygon_at(std::size_t index)
         {
-            if (index >= m_size)
+            if (index >= size())
             {
                 throw std::out_of_range("Polygon index is outside the collection.");
             }
@@ -167,7 +153,7 @@ namespace poly_paint
 
         [[nodiscard]] const Polygon& polygon_at(std::size_t index) const
         {
-            if (index >= m_size)
+            if (index >= size())
             {
                 throw std::out_of_range("Polygon index is outside the collection.");
             }
@@ -181,13 +167,13 @@ namespace poly_paint
                 return false;
             }
 
-            m_polygons[m_size++] = polygon;
+            m_polygons.push_back(std::move(polygon));
             return true;
         }
 
         void replace(std::size_t index, Polygon polygon)
         {
-            polygon_at(index) = polygon;
+            polygon_at(index) = std::move(polygon);
         }
 
         void remove(std::size_t index)
@@ -196,21 +182,16 @@ namespace poly_paint
             {
                 throw std::out_of_range("Polygon index is outside the collection.");
             }
-            std::move(
-                m_polygons.data() + index + 1,
-                m_polygons.data() + m_size,
-                m_polygons.data() + index);
-            --m_size;
+            m_polygons.erase(m_polygons.begin() + static_cast<std::ptrdiff_t>(index));
         }
 
         void clear() noexcept
         {
-            m_size = 0;
+            m_polygons.clear();
         }
 
     private:
-        std::array<Polygon, max_polygon_capacity> m_polygons {};
         std::size_t m_polygon_limit {default_polygon_count};
-        std::size_t m_size {};
+        std::vector<Polygon> m_polygons;
     };
 }
