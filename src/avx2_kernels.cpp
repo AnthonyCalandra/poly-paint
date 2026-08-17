@@ -5,6 +5,7 @@
 #include <immintrin.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -28,6 +29,12 @@ namespace poly_paint::detail
                 (static_cast<std::uint32_t>(color.a) << 24);
         }
 
+        [[nodiscard]] int epi32_bits(std::uint32_t value) noexcept
+        {
+            static_assert(sizeof(int) == sizeof(std::uint32_t));
+            return std::bit_cast<int>(value);
+        }
+
         void validate_rgba(std::span<const std::uint8_t> rgba)
         {
             if (rgba.size() % rgba_channel_count != 0)
@@ -40,7 +47,7 @@ namespace poly_paint::detail
     void fill_rgba_pixels(std::span<std::uint8_t> rgba, RgbaColor color)
     {
         validate_rgba(rgba);
-        const __m256i vector_color = _mm256_set1_epi32(static_cast<int>(pack_color(color)));
+        const __m256i vector_color = _mm256_set1_epi32(epi32_bits(pack_color(color)));
 
         std::size_t offset = 0;
         for (; offset + 32 <= rgba.size(); offset += 32)
@@ -66,7 +73,7 @@ namespace poly_paint::detail
         }
 
         const __m256i zero = _mm256_setzero_si256();
-        const __m256i source_color = _mm256_set1_epi32(static_cast<int>(pack_color(source)));
+        const __m256i source_color = _mm256_set1_epi32(epi32_bits(pack_color(source)));
         const __m256i source_alpha = _mm256_set1_epi16(static_cast<short>(source.a));
         const __m256i inverse_source_alpha = _mm256_set1_epi16(
             static_cast<short>(maximum_channel - source.a));
@@ -75,15 +82,15 @@ namespace poly_paint::detail
         const __m256i source_terms = _mm256_add_epi16(
             _mm256_mullo_epi16(source_channels, source_alpha), rounding);
         const auto opaque_alpha = static_cast<std::uint32_t>(maximum_channel) << 24;
-        const __m256i opaque_alpha_mask = _mm256_set1_epi32(static_cast<int>(opaque_alpha));
+        const __m256i opaque_alpha_mask = _mm256_set1_epi32(epi32_bits(opaque_alpha));
         const std::uint32_t alpha = source.a;
         const std::uint32_t inverse_alpha = maximum_channel - alpha;
         const std::uint32_t red_source_term =
-            static_cast<std::uint32_t>(source.r) * alpha + 128;
+            source.r * alpha + 128;
         const std::uint32_t green_source_term =
-            static_cast<std::uint32_t>(source.g) * alpha + 128;
+            source.g * alpha + 128;
         const std::uint32_t blue_source_term =
-            static_cast<std::uint32_t>(source.b) * alpha + 128;
+            source.b * alpha + 128;
 
         for (const MutableRgbaSpan rgba : rgba_spans)
         {
@@ -115,18 +122,15 @@ namespace poly_paint::detail
 
             for (; offset < rgba.size(); offset += rgba_channel_count)
             {
-                std::uint32_t red = red_source_term +
-                    static_cast<std::uint32_t>(rgba[offset]) * inverse_alpha;
+                std::uint32_t red = red_source_term + rgba[offset] * inverse_alpha;
                 red += red >> 8;
                 rgba[offset] = static_cast<std::uint8_t>(red >> 8);
 
-                std::uint32_t green = green_source_term +
-                    static_cast<std::uint32_t>(rgba[offset + 1]) * inverse_alpha;
+                std::uint32_t green = green_source_term + rgba[offset + 1] * inverse_alpha;
                 green += green >> 8;
                 rgba[offset + 1] = static_cast<std::uint8_t>(green >> 8);
 
-                std::uint32_t blue = blue_source_term +
-                    static_cast<std::uint32_t>(rgba[offset + 2]) * inverse_alpha;
+                std::uint32_t blue = blue_source_term + rgba[offset + 2] * inverse_alpha;
                 blue += blue >> 8;
                 rgba[offset + 2] = static_cast<std::uint8_t>(blue >> 8);
             }
@@ -144,7 +148,7 @@ namespace poly_paint::detail
         }
 
         const __m256i zero = _mm256_setzero_si256();
-        const __m256i rgb_mask = _mm256_set1_epi32(static_cast<int>(packed_rgb_mask));
+        const __m256i rgb_mask = _mm256_set1_epi32(epi32_bits(packed_rgb_mask));
         __m256i vector_sum = _mm256_setzero_si256();
         std::size_t offset = 0;
         for (; offset + 32 <= left.size(); offset += 32)
@@ -168,9 +172,8 @@ namespace poly_paint::detail
         {
             for (std::size_t channel = 0; channel < rgb_channel_count; ++channel)
             {
-                const int difference = static_cast<int>(left[offset + channel]) -
-                    static_cast<int>(right[offset + channel]);
-                total += static_cast<std::uint64_t>(difference < 0 ? -difference : difference);
+                const int difference = left[offset + channel] - right[offset + channel];
+                total += difference < 0 ? -difference : difference;
             }
         }
         return total;

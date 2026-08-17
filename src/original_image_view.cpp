@@ -1,19 +1,15 @@
 #include "original_image_view.h"
 
+#include "imgui_texture.h"
+
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstdint>
 
 namespace poly_paint
 {
     namespace
     {
-        [[nodiscard]] ImTextureID to_imgui_texture(GLuint texture)
-        {
-            return static_cast<ImTextureID>(static_cast<std::intptr_t>(texture));
-        }
-
         [[nodiscard]] ImVec2 fit_image(
             const OriginalImageViewModel& image,
             ImVec2 available)

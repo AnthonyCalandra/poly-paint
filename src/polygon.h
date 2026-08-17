@@ -197,9 +197,9 @@ namespace poly_paint
                 throw std::out_of_range("Polygon index is outside the collection.");
             }
             std::move(
-                m_polygons.begin() + static_cast<std::ptrdiff_t>(index + 1),
-                m_polygons.begin() + static_cast<std::ptrdiff_t>(m_size),
-                m_polygons.begin() + static_cast<std::ptrdiff_t>(index));
+                m_polygons.data() + index + 1,
+                m_polygons.data() + m_size,
+                m_polygons.data() + index);
             --m_size;
         }
 

@@ -24,6 +24,13 @@ namespace poly_paint
             scale
         };
 
+        constexpr std::array mutation_kinds {
+            MutationKind::color,
+            MutationKind::vertex,
+            MutationKind::translation,
+            MutationKind::scale
+        };
+
         [[nodiscard]] Polygon make_random_polygon(std::mt19937& random_engine)
         {
             std::uniform_real_distribution<float> coordinate(-0.15f, 1.15f);
@@ -107,22 +114,21 @@ namespace poly_paint
         {
             for (std::size_t x = sample_radius; x < width - sample_radius; x += sample_stride)
             {
-                std::uint16_t contrast = 0;
+                int contrast = 0;
                 for (std::size_t channel = 0; channel < rgb_channel_count; ++channel)
                 {
                     const int surrounding_average =
-                        (static_cast<int>(color_at(x - sample_radius, y, channel)) +
-                         static_cast<int>(color_at(x + sample_radius, y, channel)) +
-                         static_cast<int>(color_at(x, y - sample_radius, channel)) +
-                         static_cast<int>(color_at(x, y + sample_radius, channel))) / 4;
-                    contrast = static_cast<std::uint16_t>(contrast +
-                        std::abs(static_cast<int>(color_at(x, y, channel)) - surrounding_average));
+                        (color_at(x - sample_radius, y, channel) +
+                         color_at(x + sample_radius, y, channel) +
+                         color_at(x, y - sample_radius, channel) +
+                         color_at(x, y + sample_radius, channel)) / 4;
+                    contrast += std::abs(color_at(x, y, channel) - surrounding_average);
                 }
                 candidates.push_back({
                     x,
                     y,
                     {color_at(x, y, 0), color_at(x, y, 1), color_at(x, y, 2), maximum_channel},
-                    contrast
+                    static_cast<std::uint16_t>(contrast)
                 });
             }
         }
@@ -250,11 +256,9 @@ namespace poly_paint
             return child;
         }
 
-        std::uniform_int_distribution<unsigned int> mutation_type(
-            static_cast<unsigned int>(MutationKind::color),
-            static_cast<unsigned int>(MutationKind::scale));
+        std::uniform_int_distribution<std::size_t> mutation_index(0, mutation_kinds.size() - 1);
         const bool medium_mutation = tier >= 70;
-        switch (static_cast<MutationKind>(mutation_type(random_engine)))
+        switch (mutation_kinds[mutation_index(random_engine)])
         {
         case MutationKind::color:
         {

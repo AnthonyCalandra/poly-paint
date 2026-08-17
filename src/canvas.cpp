@@ -55,9 +55,9 @@ namespace poly_paint
                 const float fy = static_cast<float>(y) /
                     static_cast<float>(std::max(std::size_t {1}, m_height - 1));
                 set_pixel(x, y, {
-                    static_cast<std::uint8_t>(static_cast<float>(maximum_channel) * fx),
-                    static_cast<std::uint8_t>(static_cast<float>(maximum_channel) * fy),
-                    static_cast<std::uint8_t>(static_cast<float>(maximum_channel) * (1.0f - fx)),
+                    static_cast<std::uint8_t>(maximum_channel * fx),
+                    static_cast<std::uint8_t>(maximum_channel * fy),
+                    static_cast<std::uint8_t>(maximum_channel * (1.0f - fx)),
                     maximum_channel
                 });
             }

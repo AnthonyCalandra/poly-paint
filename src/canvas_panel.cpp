@@ -1,8 +1,9 @@
 #include "canvas_panel.h"
 
+#include "imgui_texture.h"
+
 #include <imgui.h>
 
-#include <cstdint>
 #include <format>
 #include <limits>
 #include <string>
@@ -64,7 +65,7 @@ namespace poly_paint
         {
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (available.y - image_size.y) * 0.5f);
         }
-        ImGui::Image(static_cast<ImTextureID>(static_cast<std::intptr_t>(texture)), image_size);
+        ImGui::Image(to_imgui_texture(texture), image_size);
         if (show_performance_overlay)
         {
             draw_performance_overlay();

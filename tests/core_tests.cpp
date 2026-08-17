@@ -25,8 +25,8 @@ namespace
     {
         constexpr std::uint32_t maximum_channel =
             std::numeric_limits<std::uint8_t>::max();
-        std::uint32_t sum = static_cast<std::uint32_t>(source) * alpha +
-            static_cast<std::uint32_t>(destination) * (maximum_channel - alpha) + 128;
+        std::uint32_t sum = source * alpha +
+            destination * (maximum_channel - alpha) + 128;
         sum += sum >> 8;
         return static_cast<std::uint8_t>(sum >> 8);
     }
@@ -134,6 +134,39 @@ namespace
         {
             std::cerr << "tiled raster output differed from full-image output\n";
             return false;
+        }
+
+        const std::array left_sliver {
+            poly_paint::PolygonPoint {0.0f, 0.0f},
+            poly_paint::PolygonPoint {0.1f, 0.0f},
+            poly_paint::PolygonPoint {0.1f, 1.0f},
+            poly_paint::PolygonPoint {0.0f, 1.0f}
+        };
+        const std::array right_sliver {
+            poly_paint::PolygonPoint {0.9f, 0.0f},
+            poly_paint::PolygonPoint {1.0f, 0.0f},
+            poly_paint::PolygonPoint {1.0f, 1.0f},
+            poly_paint::PolygonPoint {0.9f, 1.0f}
+        };
+        poly_paint::PolygonCollection edge_slivers(2);
+        edge_slivers.add(poly_paint::Polygon(left_sliver, {255, 0, 0, maximum_channel}));
+        edge_slivers.add(poly_paint::Polygon(right_sliver, {255, 0, 0, maximum_channel}));
+        const std::vector<std::uint8_t> clipped_slivers =
+            poly_paint::rasterize(edge_slivers, 4, 1);
+        const std::array background_pixel {
+            std::uint8_t {0}, std::uint8_t {0}, std::uint8_t {0}, maximum_channel};
+        for (std::size_t offset = 0;
+             offset < clipped_slivers.size();
+             offset += background_pixel.size())
+        {
+            if (!std::ranges::equal(
+                    std::span<const std::uint8_t> {clipped_slivers}.subspan(
+                        offset, background_pixel.size()),
+                    background_pixel))
+            {
+                std::cerr << "subpixel edge span incorrectly covered a raster sample\n";
+                return false;
+            }
         }
 
         const poly_paint::ImageSimilarityScorer scorer(2, 2, image);
