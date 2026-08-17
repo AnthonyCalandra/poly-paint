@@ -104,6 +104,7 @@ add_executable(poly_paint
     src/application.cpp
     src/canvas.cpp
     src/canvas_panel.cpp
+    src/cooperative_evolution.cpp
     src/controls_panel.cpp
     src/evolution_runner.cpp
     src/file_dialog.cpp
@@ -152,6 +153,7 @@ if(BUILD_TESTING)
     add_executable(poly_paint_core_tests
         tests/core_tests.cpp
         ${POLY_PAINT_KERNEL_SOURCE}
+        src/cooperative_evolution.cpp
         src/evolution_runner.cpp
         src/image_similarity_scorer.cpp
         src/polygon_evolution.cpp

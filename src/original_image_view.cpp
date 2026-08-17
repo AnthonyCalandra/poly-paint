@@ -24,15 +24,6 @@ namespace poly_paint
             const float scale = std::min(available.x / width, available.y / height);
             return {width * scale, height * scale};
         }
-
-        void align_bottom_right(ImVec2 available, ImVec2 item_size)
-        {
-            const ImVec2 cursor = ImGui::GetCursorPos();
-            ImGui::SetCursorPos({
-                cursor.x + std::max(0.0f, available.x - item_size.x),
-                cursor.y + std::max(0.0f, available.y - item_size.y)
-            });
-        }
     }
 
     void OriginalImageView::draw_preview(const OriginalImageViewModel& image)
@@ -44,15 +35,23 @@ namespace poly_paint
         }
 
         ImGui::Spacing();
-        ImGui::TextUnformatted("Original image");
         const ImVec2 available = ImGui::GetContentRegionAvail();
-        const ImVec2 image_size = fit_image(image, available);
+        const float label_height = ImGui::GetTextLineHeight();
+        const float label_gap = ImGui::GetStyle().ItemSpacing.y;
+        const ImVec2 image_available {
+            available.x,
+            std::max(0.0f, available.y - label_height - label_gap)};
+        const ImVec2 image_size = fit_image(image, image_available);
         if (image_size.x <= 0.0f || image_size.y <= 0.0f)
         {
             return;
         }
 
-        align_bottom_right(available, image_size);
+        const ImVec2 cursor = ImGui::GetCursorPos();
+        const float block_height = label_height + label_gap + image_size.y;
+        ImGui::SetCursorPosY(cursor.y + std::max(0.0f, available.y - block_height));
+        ImGui::TextUnformatted("Original image");
+        ImGui::SetCursorPosX(cursor.x + std::max(0.0f, available.x - image_size.x));
         ImGui::Image(to_imgui_texture(image.texture), image_size);
         if (ImGui::IsItemHovered())
         {
