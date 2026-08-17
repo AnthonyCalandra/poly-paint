@@ -122,10 +122,7 @@ namespace poly_paint
                 assess_population(unevaluated, fitnesses);
 
                 candidates.clear();
-                for (const ScoredIndividual& parent : parents)
-                {
-                    candidates.push_back(parent);
-                }
+                candidates.swap(parents);
                 for (std::size_t index = 0; index < unevaluated.size(); ++index)
                 {
                     Individual& individual = unevaluated[index];
@@ -160,7 +157,6 @@ namespace poly_paint
                         return left.fitness > right.fitness;
                     });
 
-                parents.clear();
                 for (std::size_t index = 0; index < m_settings.parent_count; ++index)
                 {
                     parents.push_back(std::move(candidates[index]));
