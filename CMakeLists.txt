@@ -116,6 +116,33 @@ add_executable(poly_paint
     src/polygon_rasterizer.cpp
 )
 
+# Keep headers in a named file set so CMake-aware IDEs can discover them and
+# the target metadata remains ready for future install/export rules.
+target_sources(poly_paint
+    PRIVATE
+        FILE_SET HEADERS
+        TYPE HEADERS
+        BASE_DIRS src
+        FILES
+            src/application.h
+            src/canvas.h
+            src/canvas_panel.h
+            src/controls_panel.h
+            src/cooperative_evolution.h
+            src/evolution_runner.h
+            src/evolution_strategy.h
+            src/file_dialog.h
+            src/gui_layout.h
+            src/image_dimensions.h
+            src/image_similarity_scorer.h
+            src/imgui_texture.h
+            src/original_image_view.h
+            src/pixel_kernels.h
+            src/polygon.h
+            src/polygon_evolution.h
+            src/polygon_rasterizer.h
+)
+
 target_include_directories(poly_paint
     PRIVATE
         ${stb_SOURCE_DIR}
@@ -158,6 +185,22 @@ if(BUILD_TESTING)
         src/image_similarity_scorer.cpp
         src/polygon_evolution.cpp
         src/polygon_rasterizer.cpp
+    )
+    target_sources(poly_paint_core_tests
+        PRIVATE
+            FILE_SET HEADERS
+            TYPE HEADERS
+            BASE_DIRS src
+            FILES
+                src/cooperative_evolution.h
+                src/evolution_runner.h
+                src/evolution_strategy.h
+                src/image_dimensions.h
+                src/image_similarity_scorer.h
+                src/pixel_kernels.h
+                src/polygon.h
+                src/polygon_evolution.h
+                src/polygon_rasterizer.h
     )
     target_include_directories(poly_paint_core_tests PRIVATE src)
     target_link_libraries(poly_paint_core_tests PRIVATE bs_thread_pool)
