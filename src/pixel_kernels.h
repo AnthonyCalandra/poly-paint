@@ -7,15 +7,18 @@
 
 namespace poly_paint::detail
 {
+    /** @brief Mutable byte view over one compact RGBA span. */
     using MutableRgbaSpan = std::span<std::uint8_t>;
 
-    // Implemented by either the portable scalar backend or the AVX2 backend,
-    // selected at configure time by POLY_PAINT_ENABLE_AVX2.
+    /** @brief Fills an RGBA buffer with one color using the configured SIMD backend. */
     void fill_rgba_pixels(std::span<std::uint8_t> rgba, RgbaColor color);
-    // Every destination pixel must be opaque; blending preserves its alpha byte.
+    /** @brief Source-over blends @p source into opaque destination spans.
+     *  @details The configured scalar or AVX2 backend preserves each destination alpha byte.
+     */
     void blend_source_over_opaque(
         std::span<const MutableRgbaSpan> rgba_spans,
         RgbaColor source);
+    /** @brief Returns the sum of absolute differences between two RGB byte sequences. */
     [[nodiscard]] std::uint64_t rgb_absolute_difference(
         std::span<const std::uint8_t> left,
         std::span<const std::uint8_t> right);

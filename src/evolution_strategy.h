@@ -17,46 +17,68 @@
 
 namespace poly_paint
 {
-    // A maximising (mu + lambda) evolution strategy. Parents compete with their
-    // mutated children for survival, so good solutions are never discarded only
-    // because a generation failed to improve them.
+    /** @brief A maximizing @f$(\mu + \lambda)@f$ evolution strategy.
+     *  @details Parents compete with their mutated children, so a non-improving
+     *  generation cannot discard an already good solution.
+     */
     template <typename Individual, typename Fitness = double>
     class EvolutionStrategy
     {
     public:
+        /** @brief Parameters that control population size, duration, and parallelism. */
         struct Settings
         {
-            std::size_t parent_count {16};       // mu
-            std::size_t offspring_count {64};    // lambda
-            std::size_t max_generations {1'000}; // Zero means no generation limit.
-            std::chrono::milliseconds time_limit {0}; // Zero means no time limit.
-            // Zero uses all available logical processors. The fitness function
-            // must be safe to call concurrently when this is greater than one.
+            /** @brief Number of selected parents (@f$\mu@f$); must be nonzero. */
+            std::size_t parent_count {16};
+            /** @brief Number of mutated children per generation (@f$\lambda@f$). */
+            std::size_t offspring_count {64};
+            /** @brief Generation limit; zero permits an unlimited run. */
+            std::size_t max_generations {1'000};
+            /** @brief Wall-clock limit; zero disables time-based stopping. */
+            std::chrono::milliseconds time_limit {0};
+            /** @brief Fitness worker count; zero uses available logical processors.
+             *  @details The fitness function must be thread-safe when this exceeds one.
+             */
             std::size_t worker_count {0};
         };
 
+        /** @brief Creates a random individual using the supplied random engine. */
         using RandomIndividualFactory = std::function<Individual(std::mt19937&)>;
+        /** @brief Produces one mutation of a parent using the supplied random engine. */
         using MutationFunction = std::function<Individual(const Individual&, std::mt19937&)>;
+        /** @brief Computes an individual's fitness; higher values are better. */
         using FitnessFunction = std::function<Fitness(const Individual&)>;
+        /** @brief Tests whether an individual satisfies an optional completion condition. */
         using CompletionPredicate = std::function<bool(const Individual&, const Fitness&)>;
-        // Return false to stop after the current generation has been evaluated.
+        /** @brief Receives each completed generation and returns whether to continue. */
         using ProgressCallback = std::function<bool(std::size_t, const Individual&, const Fitness&)>;
+        /** @brief A previously scored individual that may migrate into a population. */
         using Migrant = std::pair<Individual, Fitness>;
-        // A migrant is already scored and competes with the local parents and
-        // offspring in the requested generation. Returning no value skips migration.
+        /** @brief Supplies an optional scored migrant for a generation. */
         using MigrationSource = std::function<std::optional<Migrant>(std::size_t)>;
 
+        /** @brief Final population, best candidate, and reason the run ended. */
         struct Result
         {
+            /** @brief Highest-fitness individual encountered. */
             Individual best_individual;
+            /** @brief Fitness of @ref best_individual. */
             Fitness best_fitness;
+            /** @brief Selected parent population from the final generation. */
             std::vector<Individual> parents;
+            /** @brief Number of fully evaluated generations. */
             std::size_t generations_completed {};
+            /** @brief Whether the completion predicate stopped the run. */
             bool stopped_by_completion_condition {};
+            /** @brief Whether the time limit stopped the run. */
             bool stopped_by_time_limit {};
+            /** @brief Whether the progress callback stopped the run. */
             bool stopped_by_progress_callback {};
         };
 
+        /** @brief Constructs a strategy from its settings and behavior callbacks.
+         *  @throws std::invalid_argument if parent count or required callbacks are invalid.
+         */
         EvolutionStrategy(
             Settings settings,
             RandomIndividualFactory make_random_individual,
@@ -84,6 +106,7 @@ namespace poly_paint
             }
         }
 
+        /** @brief Evolves a population using @p random_engine and returns its result. */
         [[nodiscard]] Result run(std::mt19937& random_engine) const
         {
             const std::size_t initial_population_count = std::max(
@@ -216,6 +239,7 @@ namespace poly_paint
         }
 
     private:
+        /** @brief Creates a worker pool when parallel fitness evaluation is requested. */
         [[nodiscard]] static std::unique_ptr<BS::thread_pool<>> make_worker_pool(
             std::size_t requested_worker_count)
         {
@@ -229,6 +253,7 @@ namespace poly_paint
             return std::make_unique<BS::thread_pool<>>(worker_count);
         }
 
+        /** @brief Evaluates every candidate, serially or in parallel as configured. */
         void assess_population(
             std::span<const Individual> population,
             std::span<Fitness> fitnesses) const
@@ -256,6 +281,7 @@ namespace poly_paint
             completed.get();
         }
 
+        /** @brief An individual paired with its already computed fitness. */
         struct ScoredIndividual
         {
             Individual individual;

@@ -9,8 +9,9 @@
 
 namespace poly_paint
 {
-    // Converts a polygon genome into a row-major RGBA image. Polygons are drawn
-    // in collection order: later polygons are composited over earlier ones.
+    /** @brief Converts a polygon collection into a row-major RGBA image.
+     *  @details Later polygons are composited over earlier polygons.
+     */
     [[nodiscard]] std::vector<std::uint8_t> rasterize(
         const PolygonCollection& polygons,
         std::size_t width,
@@ -18,6 +19,7 @@ namespace poly_paint
         RgbaColor background = {
             0, 0, 0, std::numeric_limits<std::uint8_t>::max()});
 
+    /** @brief Rasterizes a collection into the caller-provided full RGBA buffer. */
     void rasterize_into(
         const PolygonCollection& polygons,
         std::size_t width,
@@ -26,7 +28,7 @@ namespace poly_paint
         RgbaColor background = {
             0, 0, 0, std::numeric_limits<std::uint8_t>::max()});
 
-    // Rasterizes a contiguous set of image rows into a compact output buffer.
+    /** @brief Rasterizes consecutive image rows into a compact RGBA output buffer. */
     void rasterize_rows_into(
         const PolygonCollection& polygons,
         std::size_t width,

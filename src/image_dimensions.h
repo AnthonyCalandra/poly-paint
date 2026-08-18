@@ -10,10 +10,14 @@
 
 namespace poly_paint
 {
+    /** @brief Number of color channels in an RGB pixel. */
     inline constexpr std::size_t rgb_channel_count = 3;
+    /** @brief Number of channels in an RGBA pixel. */
     inline constexpr std::size_t rgba_channel_count = 4;
+    /** @brief Zero-based index of the alpha channel in an RGBA pixel. */
     inline constexpr std::size_t alpha_channel_index = rgb_channel_count;
 
+    /** @brief Returns @p width times @p height, throwing on overflow. */
     [[nodiscard]] inline std::size_t checked_pixel_count(
         std::size_t width,
         std::size_t height)
@@ -25,6 +29,7 @@ namespace poly_paint
         return width * height;
     }
 
+    /** @brief Returns the required RGBA byte count, throwing on overflow. */
     [[nodiscard]] inline std::size_t checked_rgba_byte_count(
         std::size_t width,
         std::size_t height)
@@ -37,6 +42,7 @@ namespace poly_paint
         return pixels * rgba_channel_count;
     }
 
+    /** @brief Converts an integral value to @p Destination, throwing if it cannot fit. */
     template <std::integral Destination, std::integral Source>
     [[nodiscard]] Destination checked_narrow(Source value, std::string_view description)
     {

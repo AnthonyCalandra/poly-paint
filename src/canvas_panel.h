@@ -5,6 +5,7 @@
 
 namespace poly_paint
 {
+    /** @brief Draws the canvas panel, optionally including its FPS overlay. */
     void draw_canvas_panel(
         const PanelLayout& layout,
         Canvas& canvas,
