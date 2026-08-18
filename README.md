@@ -1,23 +1,36 @@
 # poly-paint
 
-Basic C++ GUI image app scaffolded with:
+`poly-paint` is a native C++ application that recreates a reference image with
+evolving, semi-transparent polygons. Load an image, choose the initial
+population and evolution settings, then let the optimizer iteratively improve a
+polygon-based approximation that can be exported as a PNG.
 
-- CMake
-- Dear ImGui
-- ImGuiFileDialog
-- GLFW
-- GLAD
-- stb_image_write
+![poly-paint running an evolution](docs/images/ui.png)
 
-The application is built as C++23. AVX2 acceleration is enabled by default;
-intrinsics and compiler flags are isolated to `src/avx2_kernels.cpp`. Configure
-with `-DPOLY_PAINT_ENABLE_AVX2=OFF` to use the portable scalar kernels instead.
+## What it does
 
-It opens a native desktop window, uses an ImGui file picker to load images, renders a pixel canvas, and exports PNG files.
+- Opens a target image through a native file picker and displays both the
+  original and current polygon approximation.
+- Evolves polygon collections in the background and reports the generation and
+  best similarity score as it runs.
+- Supports randomized and contrast-aware \"best guess\" starting populations.
+- Lets you choose 50, 100, 500, or 1,000 polygons; set parent and offspring
+  population sizes; optionally limit generations; and pause, resume, or stop a
+  run.
+- Provides canvas zoom and saves the current approximation to a PNG file.
+- Uses AVX2 pixel kernels by default, with a portable scalar alternative.
+
+## Example
+
+The following reference image can be approximated by an evolving polygon
+collection:
+
+![Example reference image](docs/images/lisa.png)
 
 ## Build
 
-This repo is configured for both clang and MSVC / Visual Studio.
+The project requires CMake and a C++23-capable compiler. The first configure
+step fetches the project dependencies from GitHub.
 
 ### clang
 
@@ -35,20 +48,20 @@ cmake --build --preset build-msvc-debug
 .\build\msvc-debug\Debug\poly_paint.exe
 ```
 
-Run the core regression tests after either build with:
+Run the core regression tests after either build:
 
 ```powershell
 ctest --test-dir build\msvc-debug -C Debug --output-on-failure
 ```
 
-You can also open the folder directly in Visual Studio 2022 and select the `msvc-debug` or `msvc-release` preset.
+To disable AVX2 and build with portable scalar kernels, configure with
+`-DPOLY_PAINT_ENABLE_AVX2=OFF`.
 
-The first configure step downloads dependencies from GitHub through CMake `FetchContent`, so network access is required for that step.
+## Tech
 
-## Notes
+The interface is built with Dear ImGui, GLFW, and OpenGL 3.3. Image loading and
+PNG export use stb, and evolution work is coordinated on background threads.
 
-- The clang presets use CMake's `Ninja` generator, which is included with Visual Studio's CMake tools. This avoids requiring a separate Unix `make` installation on Windows.
-- The MSVC presets target Visual Studio 2022 (`Visual Studio 17 2022`) on `x64`.
-- If `cmake --preset msvc-debug` fails, verify that Visual Studio 2022 with the Desktop development with C++ workload is installed.
-- The app uses OpenGL 3.3 for rendering and Dear ImGui for the UI layer.
-- Export currently writes PNG files to the project root by default.
+## License
+
+Released under the [MIT License](LICENSE).
