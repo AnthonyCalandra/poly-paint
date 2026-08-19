@@ -5,6 +5,7 @@
 #include "polygon_rasterizer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -288,9 +289,15 @@ namespace poly_paint::detail
         class GenerationObserver
         {
         public:
-            GenerationObserver(SharedChampion& champion, EvolutionRunControl& control)
+            GenerationObserver(
+                SharedChampion& champion,
+                EvolutionRunControl& control,
+                std::size_t generation_limit,
+                std::atomic<bool>& generation_limit_reached)
                 : m_champion(champion)
                 , m_control(control)
+                , m_generation_limit(generation_limit)
+                , m_generation_limit_reached(generation_limit_reached)
             {
             }
 
@@ -299,13 +306,22 @@ namespace poly_paint::detail
                 const PolygonCollection&,
                 const double&)
             {
-                m_champion.publish(generation);
+                const bool reached_limit = m_generation_limit > 0 &&
+                    generation >= m_generation_limit &&
+                    !m_generation_limit_reached.exchange(true);
+                m_champion.publish(generation, reached_limit);
+                if (reached_limit)
+                {
+                    m_control.request_pause();
+                }
                 return m_control.continue_after_generation();
             }
 
         private:
             SharedChampion& m_champion;
             EvolutionRunControl& m_control;
+            std::size_t m_generation_limit;
+            std::atomic<bool>& m_generation_limit_reached;
         };
 
         class MigrantSource
@@ -335,7 +351,9 @@ namespace poly_paint::detail
             PolygonStrategy::Settings strategy_settings;
             strategy_settings.parent_count = settings.parent_count;
             strategy_settings.offspring_count = settings.offspring_count;
-            strategy_settings.max_generations = settings.maximum_generations;
+            // The configured limit pauses the cooperative run through its
+            // observer, so the strategy itself must remain resumable.
+            strategy_settings.max_generations = 0;
             // Each island performs its own evaluations. An internal pool would
             // multiply the worker count by the number of islands.
             strategy_settings.worker_count = 1;
@@ -351,6 +369,7 @@ namespace poly_paint::detail
                 std::span<const ContrastSeed> seeds,
                 SharedChampion& champion,
                 EvolutionRunControl& control,
+                std::atomic<bool>& generation_limit_reached,
                 std::size_t island,
                 std::uint32_t random_seed)
                 : m_target(target)
@@ -358,6 +377,7 @@ namespace poly_paint::detail
                 , m_seeds(seeds)
                 , m_champion(champion)
                 , m_control(control)
+                , m_generation_limit_reached(generation_limit_reached)
                 , m_island(island)
                 , m_random_seed(random_seed)
             {
@@ -367,7 +387,11 @@ namespace poly_paint::detail
             {
                 PolygonFactory factory(m_target, m_settings, m_seeds);
                 CandidateEvaluator evaluator(m_target, m_champion, m_island);
-                GenerationObserver observer(m_champion, m_control);
+                GenerationObserver observer(
+                    m_champion,
+                    m_control,
+                    m_settings.maximum_generations,
+                    m_generation_limit_reached);
                 MigrantSource migrants(m_champion, m_island);
                 PolygonStrategy strategy(
                     make_strategy_settings(m_settings),
@@ -388,6 +412,7 @@ namespace poly_paint::detail
             std::span<const ContrastSeed> m_seeds;
             SharedChampion& m_champion;
             EvolutionRunControl& m_control;
+            std::atomic<bool>& m_generation_limit_reached;
             std::size_t m_island;
             std::uint32_t m_random_seed;
         };
@@ -401,6 +426,7 @@ namespace poly_paint::detail
         EvolutionUpdateMailbox& updates)
     {
         SharedChampion champion(updates);
+        std::atomic<bool> generation_limit_reached {false};
         const std::size_t island_count = resolve_island_count(settings);
         const std::vector<std::uint32_t> random_seeds = make_island_seeds(island_count);
 
@@ -414,6 +440,7 @@ namespace poly_paint::detail
                 seeds,
                 champion,
                 control,
+                generation_limit_reached,
                 island,
                 random_seeds[island]});
         }

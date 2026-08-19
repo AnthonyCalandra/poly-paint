@@ -216,26 +216,48 @@ namespace
         poly_paint::EvolutionRunner runner;
         runner.start(scorer, settings);
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-        while (runner.running() && std::chrono::steady_clock::now() < deadline)
+        while (!runner.pause_requested() && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::yield();
         }
-        if (runner.running())
+        if (!runner.pause_requested() || !runner.running())
         {
             runner.stop_and_wait();
-            std::cerr << "cooperative islands did not finish within the test deadline\n";
+            std::cerr << "generation limit did not pause the cooperative run\n";
             return false;
         }
-        const std::optional<bool> stopped = runner.join_if_finished();
         const std::optional<poly_paint::EvolutionUpdate> update = runner.take_latest_update();
-        if (!stopped || *stopped || !update || update->generation != settings.maximum_generations)
+        if (!update || update->generation != settings.maximum_generations)
         {
-            std::cerr << "cooperative island lifecycle or generation reporting was incorrect\n";
+            runner.stop_and_wait();
+            std::cerr << "generation-limit pause did not publish the limiting generation\n";
             return false;
         }
         if (scorer.score(update->rgba, width, height) != update->score)
         {
+            runner.stop_and_wait();
             std::cerr << "the published global-best image and score did not match\n";
+            return false;
+        }
+
+        runner.resume();
+        const auto resume_deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        std::optional<poly_paint::EvolutionUpdate> resumed_update;
+        while (std::chrono::steady_clock::now() < resume_deadline)
+        {
+            if (std::optional next = runner.take_latest_update();
+                next && next->generation > settings.maximum_generations)
+            {
+                resumed_update = std::move(next);
+                break;
+            }
+            std::this_thread::yield();
+        }
+        runner.stop_and_wait();
+        if (!resumed_update)
+        {
+            std::cerr << "cooperative evolution did not continue after resuming\n";
             return false;
         }
         return true;

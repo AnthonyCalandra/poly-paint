@@ -15,8 +15,8 @@ polygon-based approximation that can be exported as a PNG.
   best similarity score as it runs.
 - Supports randomized and contrast-aware \"best guess\" starting populations.
 - Lets you choose 50, 100, 500, or 1,000 polygons; set parent and offspring
-  population sizes; optionally limit generations; and pause, resume, or stop a
-  run.
+  population sizes; optionally pause at a generation limit; and pause, resume,
+  or stop a run.
 - Provides canvas zoom and saves the current approximation to a PNG file.
 - Uses AVX2 pixel kernels by default, with a portable scalar alternative.
 

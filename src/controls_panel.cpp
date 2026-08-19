@@ -113,7 +113,7 @@ namespace poly_paint
             else if (generation_limit)
             {
                 draw_text(std::format(
-                    "Run will stop after {} generations.", *generation_limit));
+                    "Run will pause after {} generations.", *generation_limit));
             }
             else
             {

@@ -26,7 +26,7 @@ namespace poly_paint
         /** @brief Highest accepted parent or offspring population size. */
         static constexpr std::size_t maximum_population_count = 50;
 
-        /** @brief Generation limit; zero means no limit. */
+        /** @brief Generation at which to pause; zero means no automatic pause. */
         std::size_t maximum_generations {};
         /** @brief Number of polygons in each candidate image. */
         std::size_t polygon_count {};
