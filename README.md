@@ -35,23 +35,23 @@ step fetches the project dependencies from GitHub.
 ### clang
 
 ```powershell
-cmake --preset clang-debug
-cmake --build --preset build-clang-debug
-.\build\clang-debug\poly_paint.exe
+cmake --preset clang-release
+cmake --build --preset build-clang-release
+.\build\clang-release\poly_paint.exe
 ```
 
 ### MSVC / Visual Studio 2022
 
 ```powershell
-cmake --preset msvc-debug
-cmake --build --preset build-msvc-debug
-.\build\msvc-debug\Debug\poly_paint.exe
+cmake --preset msvc-release
+cmake --build --preset build-msvc-release
+.\build\msvc-release\Release\poly_paint.exe
 ```
 
 Run the core regression tests after either build:
 
 ```powershell
-ctest --test-dir build\msvc-debug -C Debug --output-on-failure
+ctest --test-dir build\msvc-release -C Release --output-on-failure
 ```
 
 To disable AVX2 and build with portable scalar kernels, configure with
