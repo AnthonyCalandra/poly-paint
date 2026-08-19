@@ -196,6 +196,42 @@ namespace
         return true;
     }
 
+    [[nodiscard]] bool test_frequency_weighted_target_colors()
+    {
+        constexpr std::array<std::uint8_t, 4 * poly_paint::rgba_channel_count> pixels {
+            30, 90, 40, 0,
+            30, 90, 40, 255,
+            30, 90, 40, 128,
+            100, 70, 30, 255};
+
+        std::mt19937 random_engine(42);
+        const poly_paint::PolygonCollection collection =
+            poly_paint::make_random_polygon_collection(random_engine, 1'000, pixels);
+        std::size_t green_count = 0;
+        std::size_t brown_count = 0;
+        for (const poly_paint::Polygon& polygon : collection)
+        {
+            const poly_paint::RgbaColor color = polygon.color();
+            if (color.r == 30 && color.g == 90 && color.b == 40)
+            {
+                ++green_count;
+            }
+            else if (color.r == 100 && color.g == 70 && color.b == 30)
+            {
+                ++brown_count;
+            }
+        }
+
+        const std::size_t target_color_count = green_count + brown_count;
+        if (target_color_count < 650 || target_color_count > 850 ||
+            green_count <= brown_count * 2)
+        {
+            std::cerr << "new polygon colors were not biased by target pixel frequency\n";
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool test_cooperative_runner()
     {
         constexpr std::size_t width = 2;
@@ -274,6 +310,10 @@ namespace
             return false;
         }
         if (!test_polygon_collection_storage())
+        {
+            return false;
+        }
+        if (!test_frequency_weighted_target_colors())
         {
             return false;
         }

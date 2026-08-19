@@ -275,15 +275,36 @@ namespace poly_paint::detail
                         m_target.width(),
                         m_target.height(),
                         m_settings.polygon_count,
-                        random_engine);
+                        random_engine,
+                        m_target.target_rgba());
                 }
-                return make_random_polygon_collection(random_engine, m_settings.polygon_count);
+                return make_random_polygon_collection(
+                    random_engine, m_settings.polygon_count, m_target.target_rgba());
             }
 
         private:
             const ImageSimilarityScorer& m_target;
             const EvolutionRunSettings& m_settings;
             std::span<const ContrastSeed> m_seeds;
+        };
+
+        class PolygonMutation
+        {
+        public:
+            explicit PolygonMutation(std::span<const std::uint8_t> target_rgba)
+                : m_target_rgba(target_rgba)
+            {
+            }
+
+            [[nodiscard]] PolygonCollection operator()(
+                const PolygonCollection& parent,
+                std::mt19937& random_engine) const
+            {
+                return mutate_polygon_collection(parent, random_engine, m_target_rgba);
+            }
+
+        private:
+            std::span<const std::uint8_t> m_target_rgba;
         };
 
         class GenerationObserver
@@ -386,6 +407,7 @@ namespace poly_paint::detail
             void operator()()
             {
                 PolygonFactory factory(m_target, m_settings, m_seeds);
+                PolygonMutation mutation(m_target.target_rgba());
                 CandidateEvaluator evaluator(m_target, m_champion, m_island);
                 GenerationObserver observer(
                     m_champion,
@@ -396,7 +418,7 @@ namespace poly_paint::detail
                 PolygonStrategy strategy(
                     make_strategy_settings(m_settings),
                     std::ref(factory),
-                    mutate_polygon_collection,
+                    std::ref(mutation),
                     std::ref(evaluator),
                     {},
                     std::ref(observer),

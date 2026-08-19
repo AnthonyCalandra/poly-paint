@@ -15,6 +15,7 @@ namespace poly_paint
     namespace
     {
         constexpr std::uint8_t maximum_channel = std::numeric_limits<std::uint8_t>::max();
+        constexpr unsigned int target_color_probability_percent = 75;
 
         enum class MutationKind : unsigned int
         {
@@ -31,11 +32,42 @@ namespace poly_paint
             MutationKind::scale
         };
 
-        [[nodiscard]] Polygon make_random_polygon(std::mt19937& random_engine)
+        [[nodiscard]] RgbaColor make_random_color(
+            std::mt19937& random_engine,
+            std::span<const std::uint8_t> target_rgba)
+        {
+            RgbaColor color;
+            const bool target_valid = !target_rgba.empty() &&
+                target_rgba.size() % rgba_channel_count == 0;
+            std::uniform_int_distribution<unsigned int> target_color_roll(0, 99);
+            if (target_valid &&
+                target_color_roll(random_engine) < target_color_probability_percent)
+            {
+                const std::size_t pixel_count = target_rgba.size() / rgba_channel_count;
+                std::uniform_int_distribution<std::size_t> pixel_index(0, pixel_count - 1);
+                const std::size_t offset = pixel_index(random_engine) * rgba_channel_count;
+                color.r = target_rgba[offset];
+                color.g = target_rgba[offset + 1];
+                color.b = target_rgba[offset + 2];
+            }
+            else
+            {
+                std::uniform_int_distribution<unsigned int> color_channel(0, maximum_channel);
+                color.r = static_cast<std::uint8_t>(color_channel(random_engine));
+                color.g = static_cast<std::uint8_t>(color_channel(random_engine));
+                color.b = static_cast<std::uint8_t>(color_channel(random_engine));
+            }
+
+            std::uniform_int_distribution<unsigned int> alpha_channel(30, 60);
+            color.a = static_cast<std::uint8_t>(alpha_channel(random_engine));
+            return color;
+        }
+
+        [[nodiscard]] Polygon make_random_polygon(
+            std::mt19937& random_engine,
+            std::span<const std::uint8_t> target_rgba)
         {
             std::uniform_real_distribution<float> coordinate(-0.15f, 1.15f);
-            std::uniform_int_distribution<unsigned int> color_channel(0, maximum_channel);
-            std::uniform_int_distribution<unsigned int> alpha_channel(30, 60);
             std::uniform_int_distribution<std::size_t> vertex_count(3, 7);
 
             const std::size_t count = vertex_count(random_engine);
@@ -46,12 +78,7 @@ namespace poly_paint
             }
             return Polygon(
                 std::span<const PolygonPoint> {vertices}.first(count),
-                {
-                    static_cast<std::uint8_t>(color_channel(random_engine)),
-                    static_cast<std::uint8_t>(color_channel(random_engine)),
-                    static_cast<std::uint8_t>(color_channel(random_engine)),
-                    static_cast<std::uint8_t>(alpha_channel(random_engine))
-                });
+                make_random_color(random_engine, target_rgba));
         }
 
         [[nodiscard]] PolygonPoint centroid_of(const Polygon& polygon)
@@ -71,12 +98,13 @@ namespace poly_paint
 
     PolygonCollection make_random_polygon_collection(
         std::mt19937& random_engine,
-        std::size_t polygon_count)
+        std::size_t polygon_count,
+        std::span<const std::uint8_t> target_rgba)
     {
         PolygonCollection collection(polygon_count);
         while (!collection.full())
         {
-            collection.add(make_random_polygon(random_engine));
+            collection.add(make_random_polygon(random_engine, target_rgba));
         }
         return collection;
     }
@@ -184,7 +212,8 @@ namespace poly_paint
         std::size_t width,
         std::size_t height,
         std::size_t polygon_count,
-        std::mt19937& random_engine)
+        std::mt19937& random_engine,
+        std::span<const std::uint8_t> target_rgba)
     {
         PolygonCollection collection(polygon_count);
         std::uniform_int_distribution<unsigned int> alpha_channel(30, 60);
@@ -217,14 +246,15 @@ namespace poly_paint
         }
         while (!collection.full())
         {
-            collection.add(make_random_polygon(random_engine));
+            collection.add(make_random_polygon(random_engine, target_rgba));
         }
         return collection;
     }
 
     PolygonCollection mutate_polygon_collection(
         const PolygonCollection& parent,
-        std::mt19937& random_engine)
+        std::mt19937& random_engine,
+        std::span<const std::uint8_t> target_rgba)
     {
         PolygonCollection child = parent;
         std::uniform_int_distribution<std::size_t> polygon_index(0, child.size() - 1);
@@ -233,7 +263,7 @@ namespace poly_paint
         const unsigned int tier = mutation_tier(random_engine);
         if (tier >= 95)
         {
-            child.replace(selected_polygon, make_random_polygon(random_engine));
+            child.replace(selected_polygon, make_random_polygon(random_engine, target_rgba));
             return child;
         }
 
@@ -264,7 +294,8 @@ namespace poly_paint
         {
             RgbaColor color = updated.color();
             std::uniform_int_distribution<std::size_t> channel(0, rgba_channel_count - 1);
-            std::normal_distribution<float> color_change(0.0f, medium_mutation ? 64.0f : 16.0f);
+            std::normal_distribution<float> color_change(
+                0.0f, medium_mutation ? 64.0f : 16.0f);
             std::uniform_int_distribution<unsigned int> alpha_channel(30, 60);
             std::array<std::uint8_t*, rgba_channel_count> channels {
                 &color.r, &color.g, &color.b, &color.a};

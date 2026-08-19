@@ -23,10 +23,11 @@ namespace poly_paint
         std::uint16_t contrast {};
     };
 
-    /** @brief Creates a randomized polygon collection with @p polygon_count polygons. */
+    /** @brief Creates randomized polygons biased toward colors in @p target_rgba. */
     [[nodiscard]] PolygonCollection make_random_polygon_collection(
         std::mt19937& random_engine,
-        std::size_t polygon_count);
+        std::size_t polygon_count,
+        std::span<const std::uint8_t> target_rgba = {});
 
     /** @brief Finds up to @p polygon_count high-contrast seeds in an RGBA image. */
     [[nodiscard]] std::vector<ContrastSeed> find_high_contrast_seeds(
@@ -41,10 +42,12 @@ namespace poly_paint
         std::size_t width,
         std::size_t height,
         std::size_t polygon_count,
-        std::mt19937& random_engine);
+        std::mt19937& random_engine,
+        std::span<const std::uint8_t> target_rgba = {});
 
     /** @brief Returns a randomized mutation of @p parent. */
     [[nodiscard]] PolygonCollection mutate_polygon_collection(
         const PolygonCollection& parent,
-        std::mt19937& random_engine);
+        std::mt19937& random_engine,
+        std::span<const std::uint8_t> target_rgba = {});
 }
