@@ -22,6 +22,54 @@
 
 namespace
 {
+    [[nodiscard]] bool test_highway_fill_and_difference_kernels()
+    {
+        constexpr std::array<std::size_t, 15> pixel_counts {
+            0, 1, 2, 3, 4, 7, 8, 9, 15, 16, 31, 32, 33, 65, 129};
+        constexpr poly_paint::RgbaColor fill_color {17, 139, 251, 43};
+        for (const std::size_t pixel_count : pixel_counts)
+        {
+            std::vector<std::uint8_t> left(
+                pixel_count * poly_paint::rgba_channel_count);
+            poly_paint::detail::fill_rgba_pixels(left, fill_color);
+            std::vector<std::uint8_t> right = left;
+            std::uint64_t expected_difference = 0;
+            for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
+            {
+                const std::size_t offset = pixel * poly_paint::rgba_channel_count;
+                if (left[offset] != fill_color.r ||
+                    left[offset + 1] != fill_color.g ||
+                    left[offset + 2] != fill_color.b ||
+                    left[offset + poly_paint::alpha_channel_index] != fill_color.a)
+                {
+                    std::cerr << "Highway RGBA fill produced an incorrect pixel\n";
+                    return false;
+                }
+
+                right[offset] = static_cast<std::uint8_t>((pixel * 37 + 3) % 256);
+                right[offset + 1] = static_cast<std::uint8_t>((pixel * 71 + 5) % 256);
+                right[offset + 2] = static_cast<std::uint8_t>((pixel * 109 + 7) % 256);
+                right[offset + poly_paint::alpha_channel_index] =
+                    static_cast<std::uint8_t>((pixel * 149 + 11) % 256);
+                for (std::size_t channel = 0;
+                     channel < poly_paint::rgb_channel_count;
+                     ++channel)
+                {
+                    const int difference = left[offset + channel] - right[offset + channel];
+                    expected_difference += difference < 0 ? -difference : difference;
+                }
+            }
+
+            if (poly_paint::detail::rgb_absolute_difference(left, right) !=
+                expected_difference)
+            {
+                std::cerr << "Highway RGB difference differed from the scalar reference\n";
+                return false;
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] std::uint8_t reference_opaque_blend_channel(
         std::uint8_t destination,
         std::uint8_t source,
@@ -301,6 +349,10 @@ namespace
 
     [[nodiscard]] bool run_tests()
     {
+        if (!test_highway_fill_and_difference_kernels())
+        {
+            return false;
+        }
         if (!test_opaque_blend_kernel())
         {
             return false;

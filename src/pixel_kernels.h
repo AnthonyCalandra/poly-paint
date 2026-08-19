@@ -10,10 +10,10 @@ namespace poly_paint::detail
     /** @brief Mutable byte view over one compact RGBA span. */
     using MutableRgbaSpan = std::span<std::uint8_t>;
 
-    /** @brief Fills an RGBA buffer with one color using the configured SIMD backend. */
+    /** @brief Fills an RGBA buffer with one color using Highway SIMD dispatch. */
     void fill_rgba_pixels(std::span<std::uint8_t> rgba, RgbaColor color);
     /** @brief Source-over blends @p source into opaque destination spans.
-     *  @details The configured scalar or AVX2 backend preserves each destination alpha byte.
+     *  @details Highway selects the best supported SIMD target at runtime.
      */
     void blend_source_over_opaque(
         std::span<const MutableRgbaSpan> rgba_spans,

@@ -18,7 +18,7 @@ polygon-based approximation that can be exported as a PNG.
   population sizes; optionally pause at a generation limit; and pause, resume,
   or stop a run.
 - Provides canvas zoom and saves the current approximation to a PNG file.
-- Uses AVX2 pixel kernels by default, with a portable scalar alternative.
+- Uses Google Highway for runtime-dispatched, cross-platform SIMD pixel kernels.
 
 ## Example
 
@@ -54,13 +54,11 @@ Run the core regression tests after either build:
 ctest --test-dir build\msvc-release -C Release --output-on-failure
 ```
 
-To disable AVX2 and build with portable scalar kernels, configure with
-`-DPOLY_PAINT_ENABLE_AVX2=OFF`.
-
 ## Tech
 
 The interface is built with Dear ImGui, GLFW, and OpenGL 3.3. Image loading and
-PNG export use stb, and evolution work is coordinated on background threads.
+PNG export use stb, Google Highway provides portable SIMD, and evolution work is
+coordinated on background threads.
 
 ## License
 

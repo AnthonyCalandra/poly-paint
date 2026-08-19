@@ -10,13 +10,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(POLY_PAINT_ENABLE_AVX2 "Build the AVX2-optimized pixel kernels" ON)
-option(POLY_PAINT_REPORT_SIMD_CAPABILITIES "Report CPU SIMD features during CMake configuration" OFF)
-if(POLY_PAINT_REPORT_SIMD_CAPABILITIES)
-    include(cmake/DetectSimdCapabilities.cmake)
-    poly_paint_report_simd_capabilities()
-endif()
-
 include(FetchContent)
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
@@ -62,7 +55,20 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 
-FetchContent_MakeAvailable(glfw glad imgui imgui_file_dialog stb bs_thread_pool)
+FetchContent_Declare(
+    highway
+    GIT_REPOSITORY https://github.com/google/highway.git
+    GIT_TAG 1.4.0
+    GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
+)
+
+set(HWY_ENABLE_CONTRIB OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(HWY_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw glad imgui imgui_file_dialog stb bs_thread_pool highway)
 
 add_library(bs_thread_pool INTERFACE)
 target_include_directories(bs_thread_pool INTERFACE ${bs_thread_pool_SOURCE_DIR}/include)
@@ -91,16 +97,8 @@ target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
 
 target_link_libraries(ImGuiFileDialog PUBLIC imgui)
 
-if(POLY_PAINT_ENABLE_AVX2)
-    set(POLY_PAINT_KERNEL_SOURCE src/avx2_kernels.cpp)
-    message(STATUS "poly-paint pixel backend: AVX2")
-else()
-    set(POLY_PAINT_KERNEL_SOURCE src/scalar_kernels.cpp)
-    message(STATUS "poly-paint pixel backend: scalar")
-endif()
-
 add_executable(poly_paint
-    ${POLY_PAINT_KERNEL_SOURCE}
+    src/highway_kernels.cpp
     src/application.cpp
     src/canvas.cpp
     src/canvas_panel.cpp
@@ -145,6 +143,7 @@ target_sources(poly_paint
 
 target_include_directories(poly_paint
     PRIVATE
+        src
         ${stb_SOURCE_DIR}
 )
 
@@ -154,6 +153,7 @@ target_link_libraries(poly_paint
         imgui
         glfw
         glad
+        hwy
         bs_thread_pool
 )
 
@@ -167,19 +167,11 @@ else()
     target_compile_options(poly_paint PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-if(POLY_PAINT_ENABLE_AVX2)
-    if(MSVC)
-        set_source_files_properties(src/avx2_kernels.cpp PROPERTIES COMPILE_OPTIONS /arch:AVX2)
-    else()
-        set_source_files_properties(src/avx2_kernels.cpp PROPERTIES COMPILE_OPTIONS -mavx2)
-    endif()
-endif()
-
 include(CTest)
 if(BUILD_TESTING)
     add_executable(poly_paint_core_tests
         tests/core_tests.cpp
-        ${POLY_PAINT_KERNEL_SOURCE}
+        src/highway_kernels.cpp
         src/cooperative_evolution.cpp
         src/evolution_runner.cpp
         src/image_similarity_scorer.cpp
@@ -203,7 +195,7 @@ if(BUILD_TESTING)
                 src/polygon_rasterizer.h
     )
     target_include_directories(poly_paint_core_tests PRIVATE src)
-    target_link_libraries(poly_paint_core_tests PRIVATE bs_thread_pool)
+    target_link_libraries(poly_paint_core_tests PRIVATE hwy bs_thread_pool)
     if(MSVC)
         target_compile_options(poly_paint_core_tests PRIVATE /W4 /permissive-)
     else()
