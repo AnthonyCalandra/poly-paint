@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 #include <random>
 
 namespace poly_paint
@@ -16,6 +17,11 @@ namespace poly_paint
     {
         constexpr std::uint8_t maximum_channel = std::numeric_limits<std::uint8_t>::max();
         constexpr unsigned int target_color_probability_percent = 75;
+        constexpr float initial_radius_factor = 0.45f;
+        constexpr float minimum_initial_radius = 0.012f;
+        constexpr float maximum_initial_radius = 0.09f;
+        constexpr float minimum_vertex_coordinate = -0.25f;
+        constexpr float maximum_vertex_coordinate = 1.25f;
 
         enum class MutationKind : unsigned int
         {
@@ -63,7 +69,7 @@ namespace poly_paint
             return color;
         }
 
-        [[nodiscard]] Polygon make_random_polygon(
+        [[nodiscard]] Polygon make_legacy_random_polygon(
             std::mt19937& random_engine,
             std::span<const std::uint8_t> target_rgba)
         {
@@ -75,6 +81,43 @@ namespace poly_paint
             for (std::size_t index = 0; index < count; ++index)
             {
                 vertices[index] = {coordinate(random_engine), coordinate(random_engine)};
+            }
+            return Polygon(
+                std::span<const PolygonPoint> {vertices}.first(count),
+                make_random_color(random_engine, target_rgba));
+        }
+
+        [[nodiscard]] Polygon make_compact_random_polygon(
+            std::mt19937& random_engine,
+            std::size_t polygon_count,
+            std::span<const std::uint8_t> target_rgba)
+        {
+            std::uniform_real_distribution<float> canvas_position(0.0f, 1.0f);
+            std::uniform_real_distribution<float> starting_angle(
+                0.0f, 2.0f * std::numbers::pi_v<float>);
+            std::uniform_real_distribution<float> angular_jitter(-0.25f, 0.25f);
+            std::uniform_real_distribution<float> radial_jitter(0.65f, 1.35f);
+            std::uniform_int_distribution<std::size_t> vertex_count(3, 7);
+
+            const float center_x = canvas_position(random_engine);
+            const float center_y = canvas_position(random_engine);
+            const float base_radius = std::clamp(
+                initial_radius_factor / std::sqrt(static_cast<float>(polygon_count)),
+                minimum_initial_radius,
+                maximum_initial_radius);
+            const float first_angle = starting_angle(random_engine);
+            const std::size_t count = vertex_count(random_engine);
+            const float angle_step =
+                2.0f * std::numbers::pi_v<float> / static_cast<float>(count);
+            Polygon::VertexStorage vertices {};
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                const float angle = first_angle + angle_step *
+                    (static_cast<float>(index) + angular_jitter(random_engine));
+                const float radius = base_radius * radial_jitter(random_engine);
+                vertices[index] = {
+                    center_x + std::cos(angle) * radius,
+                    center_y + std::sin(angle) * radius};
             }
             return Polygon(
                 std::span<const PolygonPoint> {vertices}.first(count),
@@ -96,6 +139,24 @@ namespace poly_paint
         }
     }
 
+    void detail::scale_polygon_about_centroid(Polygon& polygon, float scale)
+    {
+        const PolygonPoint centroid = centroid_of(polygon);
+        for (std::size_t index = 0; index < polygon.vertex_count(); ++index)
+        {
+            PolygonPoint vertex = polygon.vertex_at(index);
+            vertex.x = std::clamp(
+                centroid.x + (vertex.x - centroid.x) * scale,
+                minimum_vertex_coordinate,
+                maximum_vertex_coordinate);
+            vertex.y = std::clamp(
+                centroid.y + (vertex.y - centroid.y) * scale,
+                minimum_vertex_coordinate,
+                maximum_vertex_coordinate);
+            polygon.set_vertex(index, vertex);
+        }
+    }
+
     PolygonCollection make_random_polygon_collection(
         std::mt19937& random_engine,
         std::size_t polygon_count,
@@ -104,7 +165,8 @@ namespace poly_paint
         PolygonCollection collection(polygon_count);
         while (!collection.full())
         {
-            collection.add(make_random_polygon(random_engine, target_rgba));
+            collection.add(make_compact_random_polygon(
+                random_engine, polygon_count, target_rgba));
         }
         return collection;
     }
@@ -232,8 +294,9 @@ namespace poly_paint
             Polygon::VertexStorage vertices {};
             for (std::size_t index = 0; index < vertex_count; ++index)
             {
-                constexpr float pi = 3.14159265358979323846f;
-                const float angle = (2.0f * pi * static_cast<float>(index)) / static_cast<float>(vertex_count);
+                const float angle =
+                    (2.0f * std::numbers::pi_v<float> * static_cast<float>(index)) /
+                    static_cast<float>(vertex_count);
                 vertices[index] = {
                     (center_x + std::cos(angle) * radius) / static_cast<float>(width),
                     (center_y + std::sin(angle) * radius) / static_cast<float>(height)
@@ -246,7 +309,7 @@ namespace poly_paint
         }
         while (!collection.full())
         {
-            collection.add(make_random_polygon(random_engine, target_rgba));
+            collection.add(make_legacy_random_polygon(random_engine, target_rgba));
         }
         return collection;
     }
@@ -263,7 +326,10 @@ namespace poly_paint
         const unsigned int tier = mutation_tier(random_engine);
         if (tier >= 95)
         {
-            child.replace(selected_polygon, make_random_polygon(random_engine, target_rgba));
+            child.replace(
+                selected_polygon,
+                make_compact_random_polygon(
+                    random_engine, parent.polygon_limit(), target_rgba));
             return child;
         }
 
@@ -342,16 +408,9 @@ namespace poly_paint
         }
         case MutationKind::scale:
         {
-            const PolygonPoint centroid = centroid_of(updated);
             std::normal_distribution<float> scale_change(1.0f, medium_mutation ? 0.50f : 0.15f);
             const float scale = std::clamp(scale_change(random_engine), 0.25f, 2.5f);
-            for (std::size_t index = 0; index < updated.vertex_count(); ++index)
-            {
-                PolygonPoint vertex = updated.vertex_at(index);
-                vertex.x = std::clamp(centroid.x + (vertex.x - centroid.x) * scale, -0.25f, 1.25f);
-                vertex.y = std::clamp(centroid.y + (vertex.y - centroid.y) * scale, -0.25f, 1.25f);
-                updated.set_vertex(index, vertex);
-            }
+            detail::scale_polygon_about_centroid(updated, scale);
             break;
         }
         }

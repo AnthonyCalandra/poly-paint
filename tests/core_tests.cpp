@@ -280,6 +280,61 @@ namespace
         return true;
     }
 
+    [[nodiscard]] float squared_polygon_radius(const poly_paint::Polygon& polygon)
+    {
+        poly_paint::PolygonPoint centroid {};
+        for (const poly_paint::PolygonPoint vertex : polygon.vertices())
+        {
+            centroid.x += vertex.x;
+            centroid.y += vertex.y;
+        }
+        const float inverse_vertex_count =
+            1.0f / static_cast<float>(polygon.vertex_count());
+        centroid.x *= inverse_vertex_count;
+        centroid.y *= inverse_vertex_count;
+
+        float squared_radius = 0.0f;
+        for (const poly_paint::PolygonPoint vertex : polygon.vertices())
+        {
+            const float x_distance = vertex.x - centroid.x;
+            const float y_distance = vertex.y - centroid.y;
+            squared_radius = std::max(
+                squared_radius,
+                x_distance * x_distance + y_distance * y_distance);
+        }
+        return squared_radius;
+    }
+
+    [[nodiscard]] bool test_initial_modes_support_scale_growth()
+    {
+        constexpr std::size_t polygon_count = 50;
+        std::mt19937 random_engine(42);
+        const poly_paint::PolygonCollection randomized =
+            poly_paint::make_random_polygon_collection(random_engine, polygon_count);
+
+        constexpr std::array seeds {
+            poly_paint::ContrastSeed {50, 50, {40, 100, 60, 255}, 1'000}};
+        const poly_paint::PolygonCollection best_guess =
+            poly_paint::make_best_guess_polygon_collection(
+                seeds, 100, 100, polygon_count, random_engine);
+
+        const auto grows_through_scale_mutation = [](const poly_paint::Polygon& source)
+        {
+            poly_paint::Polygon grown = source;
+            const float original_radius = squared_polygon_radius(grown);
+            poly_paint::detail::scale_polygon_about_centroid(grown, 1.5f);
+            return squared_polygon_radius(grown) > original_radius;
+        };
+        if (!grows_through_scale_mutation(randomized.polygon_at(0)) ||
+            !grows_through_scale_mutation(best_guess.polygon_at(0)))
+        {
+            std::cerr << "randomized and best-guess polygons did not both grow "
+                         "through scale mutation\n";
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool test_cooperative_runner()
     {
         constexpr std::size_t width = 2;
@@ -366,6 +421,10 @@ namespace
             return false;
         }
         if (!test_frequency_weighted_target_colors())
+        {
+            return false;
+        }
+        if (!test_initial_modes_support_scale_growth())
         {
             return false;
         }

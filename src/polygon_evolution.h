@@ -10,6 +10,12 @@
 
 namespace poly_paint
 {
+    namespace detail
+    {
+        /** @brief Scales @p polygon about its centroid, clipping to mutation bounds. */
+        void scale_polygon_about_centroid(Polygon& polygon, float scale);
+    }
+
     /** @brief A high-contrast target pixel used to seed a polygon. */
     struct ContrastSeed
     {
@@ -23,7 +29,7 @@ namespace poly_paint
         std::uint16_t contrast {};
     };
 
-    /** @brief Creates randomized polygons biased toward colors in @p target_rgba. */
+    /** @brief Creates compact randomized polygons biased toward @p target_rgba colors. */
     [[nodiscard]] PolygonCollection make_random_polygon_collection(
         std::mt19937& random_engine,
         std::size_t polygon_count,
