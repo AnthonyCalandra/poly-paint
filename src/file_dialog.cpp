@@ -28,6 +28,7 @@ namespace poly_paint
     {
         IGFD::FileDialogConfig config;
         config.path = ".";
+        config.flags = ImGuiFileDialogFlags_Modal;
         ImGuiFileDialog::Instance()->OpenDialog(
             dialog_key.data(), "Choose Image", image_filters.data(), config);
     }

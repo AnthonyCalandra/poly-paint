@@ -29,7 +29,7 @@ namespace poly_paint
     public:
         /** @brief Draws an inline preview in the controls panel. */
         void draw_preview(const OriginalImageViewModel& image);
-        /** @brief Draws the optional separate full-size image window. */
+        /** @brief Draws the optional full-size image modal. */
         void draw_window(const OriginalImageViewModel& image);
 
     private:

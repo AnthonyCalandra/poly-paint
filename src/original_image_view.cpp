@@ -5,11 +5,14 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <string_view>
 
 namespace poly_paint
 {
     namespace
     {
+        constexpr std::string_view original_image_popup = "Original Image";
+
         [[nodiscard]] ImVec2 fit_image(
             const OriginalImageViewModel& image,
             ImVec2 available)
@@ -71,6 +74,11 @@ namespace poly_paint
             return;
         }
 
+        if (!ImGui::IsPopupOpen(original_image_popup.data()))
+        {
+            ImGui::OpenPopup(original_image_popup.data());
+        }
+
         const ImVec2 viewport_size = ImGui::GetMainViewport()->WorkSize;
         ImGui::SetNextWindowSize(
             {
@@ -78,7 +86,10 @@ namespace poly_paint
                 std::min(600.0f, viewport_size.y * 0.8f)
             },
             ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Original Image", &m_window_open))
+        if (ImGui::BeginPopupModal(
+                original_image_popup.data(),
+                &m_window_open,
+                ImGuiWindowFlags_NoCollapse))
         {
             const ImVec2 available = ImGui::GetContentRegionAvail();
             const ImVec2 image_size = fit_image(image, available);
@@ -91,7 +102,7 @@ namespace poly_paint
                 });
                 ImGui::Image(to_imgui_texture(image.texture), image_size);
             }
+            ImGui::EndPopup();
         }
-        ImGui::End();
     }
 }
